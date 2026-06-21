@@ -9,6 +9,7 @@ from .audio_analyzer import AudioAnalyzer, AudioInfo
 from .cover_checker import CoverChecker, CoverInfo
 from .content_generator import ContentGenerator, GeneratedContent
 from .release_manager import ReleaseManager, ReleasePackage
+from .state_manager import StateManager
 from .utils import ensure_directory
 
 
@@ -89,7 +90,7 @@ class EpisodeProcessResult:
 
 
 class EpisodeProcessor:
-    def __init__(self, config: Config = None):
+    def __init__(self, config: Config = None, state_manager: StateManager = None):
         try:
             self.config = config or Config()
         except Exception:
@@ -120,6 +121,14 @@ class EpisodeProcessor:
             self.release_manager = ReleaseManager(self.config)
         except Exception:
             self.release_manager = None
+
+        if state_manager is not None:
+            self.state_manager = state_manager
+        else:
+            try:
+                self.state_manager = StateManager(self.config)
+            except Exception:
+                self.state_manager = StateManager()
 
         try:
             in_dir = getattr(self.config, "input_dir", "./input")
@@ -267,6 +276,19 @@ class EpisodeProcessor:
             except Exception:
                 pass
 
+        try:
+            if self.state_manager is not None:
+                ep_num = result.episode_number if result.episode_number and result.episode_number != "未知" else ""
+                directory = result.directory if result.directory else ""
+                if ep_num or directory:
+                    self.state_manager.update_from_process_result(ep_num, directory, result)
+                    try:
+                        self.state_manager.save()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         return result
 
     def confirm_and_release(
@@ -290,6 +312,10 @@ class EpisodeProcessor:
             if title and isinstance(title, str) and title.strip():
                 try:
                     result.release_package.title = title
+                    if self.state_manager is not None:
+                        ep = result.episode_number if result.episode_number and result.episode_number != "未知" else ""
+                        if ep:
+                            self.state_manager.set_title(ep, title, result.directory, user_edited=True)
                 except Exception:
                     pass
 
@@ -298,13 +324,42 @@ class EpisodeProcessor:
             except Exception as e:
                 errors.append(f"重命名执行失败: {e}")
 
-            if result.generated_content is not None:
+            skip_doc_generation = False
+            try:
+                if self.state_manager is not None and result.episode_number and result.episode_number != "未知":
+                    if self.state_manager.has_user_edited_files(result.episode_number, result.directory):
+                        skip_doc_generation = True
+            except Exception:
+                skip_doc_generation = False
+
+            if result.generated_content is not None and not skip_doc_generation:
                 try:
                     self.release_manager.generate_release_documents(
                         result.release_package, result.generated_content
                     )
                 except Exception as e:
                     errors.append(f"发布文档生成失败: {e}")
+            elif skip_doc_generation:
+                try:
+                    result.release_package.warnings = getattr(result.release_package, "warnings", [])
+                    if isinstance(result.release_package.warnings, list):
+                        result.release_package.warnings.append("检测到用户手动编辑，已跳过文案覆盖")
+                except Exception:
+                    pass
+
+            try:
+                if self.state_manager is not None:
+                    ep = result.episode_number if result.episode_number and result.episode_number != "未知" else ""
+                    directory = result.directory if result.directory else ""
+                    if ep or directory:
+                        self.state_manager.update_from_process_result(ep, directory, result)
+                        self.state_manager.mark_released(ep, directory)
+                        try:
+                            self.state_manager.save()
+                        except Exception:
+                            pass
+            except Exception:
+                pass
 
             return result.release_package, errors
 
@@ -321,6 +376,16 @@ class EpisodeProcessor:
                 return False
             if self.release_manager is None:
                 return False
-            return bool(self.release_manager.archive_episode(result.release_package))
+            success = bool(self.release_manager.archive_episode(result.release_package))
+            if success and self.state_manager is not None:
+                try:
+                    ep = result.episode_number if result.episode_number and result.episode_number != "未知" else ""
+                    directory = result.directory if result.directory else ""
+                    if ep or directory:
+                        self.state_manager.mark_archived(ep, directory)
+                        self.state_manager.save()
+                except Exception:
+                    pass
+            return success
         except Exception:
             return False

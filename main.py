@@ -10,6 +10,17 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.config import Config
 from src.processor import EpisodeProcessor, EpisodeProcessResult
 from src.folder_watcher import FolderWatcher
+from src.state_manager import StateManager
+from src.dashboard import (
+    EpisodeDashboard,
+    FILTER_ALL,
+    FILTER_READY,
+    FILTER_PENDING,
+    FILTER_HAS_ISSUES,
+    FILTER_RELEASED,
+    FILTER_NOT_RELEASED,
+    VALID_FILTERS,
+)
 from src.utils import ensure_directory, format_duration
 
 
@@ -29,9 +40,17 @@ class PodcastToolCLI:
             from src.config import Config
             self.config = Config()
         try:
-            self.processor = EpisodeProcessor(self.config)
+            self.state_manager = StateManager(self.config)
+        except Exception:
+            self.state_manager = StateManager()
+        try:
+            self.processor = EpisodeProcessor(self.config, self.state_manager)
         except Exception:
             self.processor = None
+        try:
+            self.dashboard = EpisodeDashboard(self.config, self.state_manager)
+        except Exception:
+            self.dashboard = None
         self.watcher = None
         self.current_result = None
 
@@ -840,10 +859,38 @@ class PodcastToolCLI:
             print("  4. 查看当前结果")
             print("  5. 确认并生成发布包")
             print("  6. 显示配置信息")
+            print("  7. 期数看板（全部）")
+            print("  8. 期数看板（仅就绪）")
+            print("  9. 期数看板（仅待处理/有问题）")
             print("  0. 退出")
             print()
         except Exception:
             pass
+
+    def show_dashboard(self, filter_name: str = FILTER_ALL):
+        try:
+            if self.dashboard is None:
+                try:
+                    self.dashboard = EpisodeDashboard(self.config, self.state_manager)
+                except Exception:
+                    try:
+                        print("   看板未初始化")
+                    except Exception:
+                        pass
+                    return
+            try:
+                rows = self.dashboard.scan(filter_name=filter_name, save_state=True)
+                print(self.dashboard.render_table(rows))
+            except Exception as e:
+                try:
+                    print(f"   看板扫描失败: {e}")
+                except Exception:
+                    pass
+        except Exception:
+            try:
+                print("   看板渲染失败")
+            except Exception:
+                pass
 
     def show_config(self):
         try:
@@ -943,6 +990,14 @@ class PodcastToolCLI:
         parser.add_argument("--watch", "-w", action="store_true", help="启动文件夹监听")
         parser.add_argument("--scan", "-s", action="store_true", help="扫描输入目录")
         parser.add_argument("--release", "-r", action="store_true", help="自动生成发布包")
+        parser.add_argument("--dashboard", "-d", action="store_true", help="显示期数看板")
+        parser.add_argument(
+            "--filter",
+            "-f",
+            default=FILTER_ALL,
+            choices=sorted(VALID_FILTERS),
+            help=f"看板筛选条件 (默认: {FILTER_ALL})",
+        )
         parser.add_argument("--config", "-c", help="配置文件路径")
 
         try:
@@ -956,9 +1011,30 @@ class PodcastToolCLI:
             if args.config:
                 self.config = Config(args.config)
                 try:
-                    self.processor = EpisodeProcessor(self.config)
+                    self.state_manager = StateManager(self.config)
+                except Exception:
+                    self.state_manager = StateManager()
+                try:
+                    self.processor = EpisodeProcessor(self.config, self.state_manager)
                 except Exception:
                     pass
+                try:
+                    self.dashboard = EpisodeDashboard(self.config, self.state_manager)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            if args.dashboard:
+                flt = FILTER_ALL
+                try:
+                    if args.filter and isinstance(args.filter, str) and args.filter in VALID_FILTERS:
+                        flt = args.filter
+                except Exception:
+                    flt = FILTER_ALL
+                self.show_dashboard(flt)
+                return
         except Exception:
             pass
 
@@ -997,7 +1073,7 @@ class PodcastToolCLI:
         while True:
             try:
                 self.show_menu()
-                choice = safe_input("  请输入选项 [0-6]: ").strip()
+                choice = safe_input("  请输入选项 [0-9]: ").strip()
 
                 if choice == "0":
                     try:
@@ -1064,6 +1140,15 @@ class PodcastToolCLI:
 
                 elif choice == "6":
                     self.show_config()
+
+                elif choice == "7":
+                    self.show_dashboard(FILTER_ALL)
+
+                elif choice == "8":
+                    self.show_dashboard(FILTER_READY)
+
+                elif choice == "9":
+                    self.show_dashboard(FILTER_HAS_ISSUES)
 
                 else:
                     try:

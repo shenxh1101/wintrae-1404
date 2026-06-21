@@ -59,25 +59,103 @@ class MaterialValidator:
     def validate_directory(self, directory: str) -> ValidationResult:
         result = ValidationResult()
 
-        if not os.path.exists(directory):
-            result.warnings.append(f"目录不存在: {directory}")
+        try:
+            if directory is None:
+                result.warnings.append("目录参数为空")
+                result.missing_files = list(self.required_files)
+                return result
+            if not isinstance(directory, str) or not directory.strip():
+                result.warnings.append("目录路径无效")
+                result.missing_files = list(self.required_files)
+                return result
+        except Exception:
+            result.warnings.append("目录参数异常")
+            result.missing_files = list(self.required_files) if isinstance(self.required_files, list) else []
             return result
 
-        episode_num = self._detect_episode_number(directory)
-        result.episode_number = episode_num
+        try:
+            if not os.path.exists(directory):
+                result.warnings.append(f"目录不存在: {directory}")
+                result.missing_files = list(self.required_files) if isinstance(self.required_files, list) else []
+                return result
+        except (OSError, ValueError, TypeError) as e:
+            result.warnings.append(f"检查目录时出错: {e}")
+            result.missing_files = list(self.required_files) if isinstance(self.required_files, list) else []
+            return result
 
-        files = self._categorize_files(directory)
-        result.files = files
+        try:
+            if not os.path.isdir(directory):
+                result.warnings.append(f"路径不是目录: {directory}")
+                result.missing_files = list(self.required_files) if isinstance(self.required_files, list) else []
+                return result
+        except (OSError, ValueError, TypeError) as e:
+            result.warnings.append(f"检查目录类型时出错: {e}")
+            result.missing_files = list(self.required_files) if isinstance(self.required_files, list) else []
+            return result
 
-        self._check_missing_files(files, result)
-        self._check_naming_convention(files, episode_num, result)
-        self._check_sensitive_words(files, result)
+        try:
+            if not os.access(directory, os.R_OK):
+                result.warnings.append(f"目录无读取权限: {directory}")
+                result.missing_files = list(self.required_files) if isinstance(self.required_files, list) else []
+                return result
+        except Exception as e:
+            result.warnings.append(f"检查目录权限时出错: {e}")
+            result.missing_files = list(self.required_files) if isinstance(self.required_files, list) else []
+            return result
 
-        result.is_valid = (
-            len(result.missing_files) == 0
-            and len(result.naming_issues) == 0
-            and len(result.sensitive_words_found) == 0
-        )
+        try:
+            dir_contents = os.listdir(directory)
+            if len(dir_contents) == 0:
+                result.warnings.append("目录为空，未找到任何素材文件")
+                result.missing_files = list(self.required_files) if isinstance(self.required_files, list) else []
+                return result
+        except PermissionError:
+            result.warnings.append(f"无法列出目录内容（权限不足）: {directory}")
+            result.missing_files = list(self.required_files) if isinstance(self.required_files, list) else []
+            return result
+        except (OSError, ValueError, TypeError) as e:
+            result.warnings.append(f"列出目录内容时出错: {e}")
+            result.missing_files = list(self.required_files) if isinstance(self.required_files, list) else []
+            return result
+
+        try:
+            episode_num = self._detect_episode_number(directory)
+            result.episode_number = episode_num
+        except Exception as e:
+            result.warnings.append(f"检测期号时出错: {e}")
+            result.episode_number = None
+
+        try:
+            files = self._categorize_files(directory)
+            result.files = files
+        except Exception as e:
+            result.warnings.append(f"分类文件时出错: {e}")
+            result.files = {}
+            files = {}
+
+        try:
+            self._check_missing_files(files, result)
+        except Exception as e:
+            result.warnings.append(f"检查缺失文件时出错: {e}")
+
+        try:
+            self._check_naming_convention(files, result.episode_number, result)
+        except Exception as e:
+            result.warnings.append(f"检查命名规范时出错: {e}")
+
+        try:
+            self._check_sensitive_words(files, result)
+        except Exception as e:
+            result.warnings.append(f"检查敏感词时出错: {e}")
+
+        try:
+            result.is_valid = (
+                isinstance(result.missing_files, list) and len(result.missing_files) == 0
+                and isinstance(result.naming_issues, list) and len(result.naming_issues) == 0
+                and isinstance(result.sensitive_words_found, list) and len(result.sensitive_words_found) == 0
+            )
+        except Exception:
+            result.is_valid = False
 
         return result
 

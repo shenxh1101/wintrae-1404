@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "saved_at": "2026-06-22T02:31:06.770790",
+  "episodes": {
+    "001": {
+      "episode_number": "001",
+      "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
+      "status": "archived",
+      "created_at": "2026-06-22T02:31:06.295826",
+      "updated_at": "2026-06-22T02:31:06.770790",
+      "last_processed_at": "2026-06-22T02:31:06.348015",
+      "last_released_at": "2026-06-22T02:31:06.349015",
+      "last_archived_at": "2026-06-22T02:31:06.385412",
+      "missing_files": [],
+      "naming_issues": [],
+      "sensitive_words_found": [],
+      "audio_duration_seconds": 0.0,
+      "audio_format": "",
+      "cover_width": 1400,
+      "cover_height": 1400,
+      "cover_format": "JPEG",
+      "files": {
+        "audio": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_AI产品的未来.mp3",
+        "cover": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_cover.jpg",
+        "guest": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_嘉宾资料.md",
+        "summary": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_节目摘要.md"
+      },
+      "title": "AI产品的未来：从工具到伙伴",
+      "title_candidates": [
+        "AI产品的未来：从工具到伙伴",
+        "深度对话：AI产品的未来：从工具到伙伴",
+        "AI产品的未来：从工具到伙伴的真相",
+        "聊聊AI产品的未来：从工具到伙伴这件事",
+        "为什么AI产品的未来：从工具到伙伴很重要"
+      ],
+      "output_dir": "D:\\TraeProjects\\1404\\output\\001",
+      "archive_dir": "D:\\TraeProjects\\1404\\archive\\001",
+      "generated_files": [
+        "D:\\TraeProjects\\1404\\output\\001\\001_AI产品的未来：从工具到伙伴.mp3",
+        "D:\\TraeProjects\\1404\\output\\001\\001_AI产品的未来：从工具到伙伴_cover.jpg",
+        "D:\\TraeProjects\\1404\\output\\001\\001_AI产品的未来：从工具到伙伴_嘉宾资料.md",
+        "D:\\TraeProjects\\1404\\output\\001\\001_AI产品的未来：从工具到伙伴_节目简介.md",
+        "D:\\TraeProjects\\1404\\output\\001\\001_shownotes.md",
+        "D:\\TraeProjects\\1404\\output\\001\\001_嘉宾介绍.md",
+        "D:\\TraeProjects\\1404\\output\\001\\001_weibo.txt",
+        "D:\\TraeProjects\\1404\\output\\001\\001_xiaohongshu.txt",
+        "D:\\TraeProjects\\1404\\output\\001\\001_wechat.txt",
+        "D:\\TraeProjects\\1404\\output\\001\\001_twitter.txt",
+        "D:\\TraeProjects\\1404\\output\\001\\001_待办清单.md",
+        "D:\\TraeProjects\\1404\\output\\001\\001_发布清单.md"
+      ],
+      "warnings": [],
+      "errors": [],
+      "checklist": [
+        [
+          "音频文件已校验",
+          false
+        ],
+        [
+          "封面图符合规范",
+          true
+        ],
+        [
+          "嘉宾资料已确认",
+          true
+        ],
+        [
+          "节目简介已审核",
+          true
+        ],
+        [
+          "标题候选已生成",
+          true
+        ],
+        [
+          "时间轴草稿已生成",
+          true
+        ],
+        [
+          "社媒文案已准备",
+          true
+        ],
+        [
+          "文件已批量重命名",
+          true
+        ]
+      ],
+      "is_valid": true,
+      "is_released": true,
+      "is_archived": true,
+      "custom_user_edits": true,
+      "release_notes": "",
+      "metadata": {}
+    }
+  }
+}
