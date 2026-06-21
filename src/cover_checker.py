@@ -1,7 +1,7 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List
 
 from .config import Config
 
@@ -48,22 +48,48 @@ class CoverInfo:
 class CoverChecker:
     def __init__(self, config: Config = None):
         self.config = config or Config()
-        self.min_width = self.config.get("cover.min_width", 1400)
-        self.min_height = self.config.get("cover.min_height", 1400)
-        self.target_ratio = self.config.get("cover.target_ratio", 1.0)
-        self.ratio_tolerance = self.config.get("cover.ratio_tolerance", 0.01)
-        self.max_file_size_mb = self.config.get("cover.max_file_size_mb", 5)
+        try:
+            self.min_width = int(self.config.get("cover.min_width", 1400))
+        except (TypeError, ValueError):
+            self.min_width = 1400
+        try:
+            self.min_height = int(self.config.get("cover.min_height", 1400))
+        except (TypeError, ValueError):
+            self.min_height = 1400
+        try:
+            self.target_ratio = float(self.config.get("cover.target_ratio", 1.0))
+        except (TypeError, ValueError):
+            self.target_ratio = 1.0
+        try:
+            self.ratio_tolerance = float(self.config.get("cover.ratio_tolerance", 0.01))
+        except (TypeError, ValueError):
+            self.ratio_tolerance = 0.01
+        try:
+            self.max_file_size_mb = float(self.config.get("cover.max_file_size_mb", 5))
+        except (TypeError, ValueError):
+            self.max_file_size_mb = 5.0
 
     def check(self, filepath: str) -> CoverInfo:
-        filename = os.path.basename(filepath)
-        info = CoverInfo(filepath=filepath, filename=filename)
+        try:
+            filename = os.path.basename(filepath) if filepath else ""
+        except (OSError, ValueError, TypeError):
+            filename = str(filepath) if filepath else ""
+        info = CoverInfo(filepath=filepath or "", filename=filename)
 
-        if not os.path.exists(filepath):
+        if not filepath or not os.path.exists(filepath):
             info.issues.append(f"文件不存在: {filepath}")
             return info
 
-        info.file_size_bytes = os.path.getsize(filepath)
-        info.file_size_mb = info.file_size_bytes / (1024 * 1024)
+        try:
+            info.file_size_bytes = int(os.path.getsize(filepath))
+            if info.file_size_bytes < 0:
+                info.file_size_bytes = 0
+        except (OSError, PermissionError, ValueError, TypeError):
+            info.file_size_bytes = 0
+        try:
+            info.file_size_mb = info.file_size_bytes / (1024 * 1024) if info.file_size_bytes >= 0 else 0.0
+        except (ZeroDivisionError, TypeError, ValueError):
+            info.file_size_mb = 0.0
 
         if not PIL_AVAILABLE:
             info.warnings.append("Pillow 库未安装，无法进行图片尺寸检查")
@@ -72,13 +98,34 @@ class CoverChecker:
 
         try:
             with Image.open(filepath) as img:
-                info.width = img.width
-                info.height = img.height
-                info.format = img.format or ""
-                info.mode = img.mode
+                try:
+                    info.width = int(img.width) if img.width else 0
+                    if info.width < 0:
+                        info.width = 0
+                except (TypeError, ValueError):
+                    info.width = 0
+                try:
+                    info.height = int(img.height) if img.height else 0
+                    if info.height < 0:
+                        info.height = 0
+                except (TypeError, ValueError):
+                    info.height = 0
+                try:
+                    info.format = str(img.format) if img.format else ""
+                except (TypeError, ValueError):
+                    info.format = ""
+                try:
+                    info.mode = str(img.mode) if img.mode else ""
+                except (TypeError, ValueError):
+                    info.mode = ""
 
-                if info.height > 0:
-                    info.aspect_ratio = info.width / info.height
+                if info.height > 0 and info.width >= 0:
+                    try:
+                        info.aspect_ratio = info.width / info.height
+                        if info.aspect_ratio < 0:
+                            info.aspect_ratio = 0.0
+                    except (ZeroDivisionError, TypeError, ValueError):
+                        info.aspect_ratio = 0.0
 
                 self._validate_cover(info)
 
@@ -88,30 +135,36 @@ class CoverChecker:
         return info
 
     def _validate_cover(self, info: CoverInfo):
-        if info.width < self.min_width:
-            info.issues.append(
-                f"宽度不足: {info.width}px (最小要求 {self.min_width}px)"
-            )
+        try:
+            if info.width < self.min_width:
+                info.issues.append(
+                    f"宽度不足: {info.width}px (最小要求 {self.min_width}px)"
+                )
 
-        if info.height < self.min_height:
-            info.issues.append(
-                f"高度不足: {info.height}px (最小要求 {self.min_height}px)"
-            )
+            if info.height < self.min_height:
+                info.issues.append(
+                    f"高度不足: {info.height}px (最小要求 {self.min_height}px)"
+                )
 
-        ratio_diff = abs(info.aspect_ratio - self.target_ratio)
-        if ratio_diff > self.ratio_tolerance:
-            info.issues.append(
-                f"比例不符合要求: {info.aspect_ratio:.3f} "
-                f"(目标 {self.target_ratio}, 容差 {self.ratio_tolerance})"
-            )
+            try:
+                ratio_diff = abs(info.aspect_ratio - self.target_ratio)
+                if ratio_diff > self.ratio_tolerance:
+                    info.issues.append(
+                        f"比例不符合要求: {info.aspect_ratio:.3f} "
+                        f"(目标 {self.target_ratio}, 容差 {self.ratio_tolerance})"
+                    )
+            except (TypeError, ValueError):
+                pass
 
-        if info.file_size_mb > self.max_file_size_mb:
-            info.issues.append(
-                f"文件过大: {info.file_size_mb:.2f} MB "
-                f"(最大限制 {self.max_file_size_mb} MB)"
-            )
+            if info.file_size_mb > self.max_file_size_mb:
+                info.issues.append(
+                    f"文件过大: {info.file_size_mb:.2f} MB "
+                    f"(最大限制 {self.max_file_size_mb} MB)"
+                )
 
-        if info.mode not in ["RGB", "RGBA"]:
-            info.warnings.append(f"颜色模式为 {info.mode}，建议使用 RGB 或 RGBA")
+            if info.mode and info.mode not in ["RGB", "RGBA"]:
+                info.warnings.append(f"颜色模式为 {info.mode}，建议使用 RGB 或 RGBA")
+        except Exception:
+            pass
 
         info.is_valid = len(info.issues) == 0

@@ -13,336 +13,930 @@ from src.folder_watcher import FolderWatcher
 from src.utils import ensure_directory, format_duration
 
 
+def safe_input(prompt: str = "") -> str:
+    try:
+        return input(prompt)
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return ""
+
+
 class PodcastToolCLI:
     def __init__(self):
-        self.config = Config()
-        self.processor = EpisodeProcessor(self.config)
+        try:
+            self.config = Config()
+        except Exception:
+            from src.config import Config
+            self.config = Config()
+        try:
+            self.processor = EpisodeProcessor(self.config)
+        except Exception:
+            self.processor = None
         self.watcher = None
         self.current_result = None
 
     def print_header(self):
-        print("\n" + "=" * 60)
-        print("        🎙️ 播客素材整理工具 v1.0")
-        print("=" * 60)
+        try:
+            print("\n" + "=" * 60)
+            print("         播客素材整理工具 v1.0")
+            print("=" * 60)
+        except Exception:
+            pass
 
     def print_section(self, title: str):
-        print(f"\n{'─' * 60}")
-        print(f"  {title}")
-        print(f"{'─' * 60}")
+        try:
+            print(f"\n{'─' * 60}")
+            print(f"  {str(title) if title else ''}")
+            print(f"{'─' * 60}")
+        except Exception:
+            pass
 
     def print_validation_result(self, result: EpisodeProcessResult):
-        self.print_section("📋 素材校验结果")
+        try:
+            self.print_section(" 素材校验结果")
+        except Exception:
+            pass
 
-        print(f"\n  期号: {result.episode_number or '未检测到'}")
-        print(f"  目录: {result.directory}")
+        try:
+            ep = str(result.episode_number) if getattr(result, "episode_number", None) else "未检测到"
+            print(f"\n  期号: {ep}")
+        except Exception:
+            pass
 
-        if result.validation:
-            if result.validation.is_valid:
-                print("\n  ✅ 所有文件齐全，命名规范")
+        try:
+            directory = getattr(result, "directory", "")
+            print(f"  目录: {str(directory) if directory else ''}")
+        except Exception:
+            pass
+
+        try:
+            if result.validation is None:
+                return
+        except Exception:
+            return
+
+        try:
+            is_valid = bool(getattr(result.validation, "is_valid", False))
+            if is_valid:
+                print("\n   所有文件齐全，命名规范")
             else:
-                print("\n  ❌ 存在问题：")
+                print("\n   存在问题：")
+        except Exception:
+            pass
 
-            if result.validation.missing_files:
+        try:
+            missing_files = getattr(result.validation, "missing_files", [])
+            if isinstance(missing_files, list) and missing_files:
                 print(f"\n  缺失文件:")
-                for f in result.validation.missing_files:
-                    print(f"    - {f}")
+                for f in missing_files:
+                    try:
+                        print(f"    - {str(f)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
-            if result.validation.naming_issues:
+        try:
+            naming_issues = getattr(result.validation, "naming_issues", [])
+            if isinstance(naming_issues, list) and naming_issues:
                 print(f"\n  命名问题:")
-                for issue in result.validation.naming_issues:
-                    print(f"    - {issue}")
+                for issue in naming_issues:
+                    try:
+                        print(f"    - {str(issue)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
-            if result.validation.sensitive_words_found:
-                print(f"\n  ⚠️  敏感词检测:")
-                for filename, word, context in result.validation.sensitive_words_found:
-                    print(f"    - [{filename}] 发现 '{word}': {context}")
+        try:
+            swf = getattr(result.validation, "sensitive_words_found", [])
+            if isinstance(swf, list) and swf:
+                print(f"\n   敏感词检测:")
+                for item in swf:
+                    try:
+                        if isinstance(item, (list, tuple)) and len(item) >= 3:
+                            filename, word, context = item[0], item[1], item[2]
+                            print(f"    - [{str(filename)}] 发现 '{str(word)}': {str(context)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
-            if result.validation.files:
+        try:
+            files = getattr(result.validation, "files", {})
+            if isinstance(files, dict) and files:
                 print(f"\n  已识别文件:")
-                for file_type, filepath in result.validation.files.items():
-                    print(f"    {file_type:8s}: {os.path.basename(filepath)}")
+                for file_type, filepath in files.items():
+                    try:
+                        if isinstance(filepath, str):
+                            basename = os.path.basename(filepath)
+                            print(f"    {str(file_type):8s}: {basename}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
-            if result.validation.warnings:
+        try:
+            warnings = getattr(result.validation, "warnings", [])
+            if isinstance(warnings, list) and warnings:
                 print(f"\n  警告:")
-                for w in result.validation.warnings:
-                    print(f"    - {w}")
+                for w in warnings:
+                    try:
+                        print(f"    - {str(w)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
     def print_audio_info(self, result: EpisodeProcessResult):
-        if not result.audio_info:
+        try:
+            if result.audio_info is None:
+                return
+        except Exception:
             return
 
-        self.print_section("🎵 音频信息")
+        try:
+            self.print_section(" 音频信息")
+        except Exception:
+            pass
 
         info = result.audio_info
-        if info.is_valid:
-            print(f"\n  ✅ 音频校验通过")
-        else:
-            print(f"\n  ❌ 音频存在问题")
 
-        print(f"\n  文件: {info.filename}")
-        print(f"  时长: {info.duration_formatted} ({info.duration_seconds:.0f}秒)")
-        print(f"  格式: {info.format}")
-        if info.bitrate:
-            print(f"  比特率: {info.bitrate // 1000} kbps")
-        if info.sample_rate:
-            print(f"  采样率: {info.sample_rate} Hz")
-        if info.channels:
-            print(f"  声道数: {info.channels}")
-        if info.title:
-            print(f"  标题: {info.title}")
-        if info.artist:
-            print(f"  艺术家: {info.artist}")
+        try:
+            is_valid = bool(getattr(info, "is_valid", False))
+            if is_valid:
+                print(f"\n   音频校验通过")
+            else:
+                print(f"\n   音频存在问题")
+        except Exception:
+            pass
 
-        if info.issues:
-            print(f"\n  问题:")
-            for issue in info.issues:
-                print(f"    - {issue}")
+        try:
+            filename = getattr(info, "filename", "")
+            print(f"\n  文件: {str(filename) if filename else ''}")
+        except Exception:
+            pass
 
-        if info.warnings:
-            print(f"\n  警告:")
-            for w in info.warnings:
-                print(f"    - {w}")
+        try:
+            dur_fmt = getattr(info, "duration_formatted", "")
+            dur_sec = getattr(info, "duration_seconds", None)
+            if dur_sec is not None and isinstance(dur_sec, (int, float)) and dur_sec >= 0:
+                print(f"  时长: {str(dur_fmt) if dur_fmt else ''} ({dur_sec:.0f}秒)")
+            elif dur_fmt:
+                print(f"  时长: {str(dur_fmt)}")
+            else:
+                print(f"  时长: 未知")
+        except Exception:
+            try:
+                print(f"  时长: 未知")
+            except Exception:
+                pass
+
+        try:
+            fmt = getattr(info, "format", "")
+            print(f"  格式: {str(fmt) if fmt else ''}")
+        except Exception:
+            pass
+
+        try:
+            bitrate = getattr(info, "bitrate", None)
+            if bitrate is not None and isinstance(bitrate, (int, float)) and bitrate > 0:
+                print(f"  比特率: {int(bitrate) // 1000} kbps")
+        except Exception:
+            pass
+
+        try:
+            sr = getattr(info, "sample_rate", None)
+            if sr is not None and isinstance(sr, (int, float)) and sr > 0:
+                print(f"  采样率: {sr} Hz")
+        except Exception:
+            pass
+
+        try:
+            ch = getattr(info, "channels", None)
+            if ch is not None and isinstance(ch, (int, float)) and ch > 0:
+                print(f"  声道数: {int(ch)}")
+        except Exception:
+            pass
+
+        try:
+            title = getattr(info, "title", "")
+            if title and isinstance(title, str) and title.strip():
+                print(f"  标题: {title}")
+        except Exception:
+            pass
+
+        try:
+            artist = getattr(info, "artist", "")
+            if artist and isinstance(artist, str) and artist.strip():
+                print(f"  艺术家: {artist}")
+        except Exception:
+            pass
+
+        try:
+            issues = getattr(info, "issues", [])
+            if isinstance(issues, list) and issues:
+                print(f"\n  问题:")
+                for issue in issues:
+                    try:
+                        print(f"    - {str(issue)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        try:
+            warnings = getattr(info, "warnings", [])
+            if isinstance(warnings, list) and warnings:
+                print(f"\n  警告:")
+                for w in warnings:
+                    try:
+                        print(f"    - {str(w)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
     def print_cover_info(self, result: EpisodeProcessResult):
-        if not result.cover_info:
+        try:
+            if result.cover_info is None:
+                return
+        except Exception:
             return
 
-        self.print_section("🖼️  封面检查")
+        try:
+            self.print_section(" 封面检查")
+        except Exception:
+            pass
 
         info = result.cover_info
-        if info.is_valid:
-            print(f"\n  ✅ 封面校验通过")
-        else:
-            print(f"\n  ❌ 封面存在问题")
 
-        print(f"\n  文件: {info.filename}")
-        print(f"  尺寸: {info.width} x {info.height} px")
-        print(f"  比例: {info.aspect_ratio:.3f}")
-        print(f"  大小: {info.file_size_mb:.2f} MB")
-        print(f"  格式: {info.format}")
-        if info.mode:
-            print(f"  颜色模式: {info.mode}")
+        try:
+            is_valid = bool(getattr(info, "is_valid", False))
+            if is_valid:
+                print(f"\n   封面校验通过")
+            else:
+                print(f"\n   封面存在问题")
+        except Exception:
+            pass
 
-        if info.issues:
-            print(f"\n  问题:")
-            for issue in info.issues:
-                print(f"    - {issue}")
+        try:
+            filename = getattr(info, "filename", "")
+            print(f"\n  文件: {str(filename) if filename else ''}")
+        except Exception:
+            pass
 
-        if info.warnings:
-            print(f"\n  警告:")
-            for w in info.warnings:
-                print(f"    - {w}")
+        try:
+            width = getattr(info, "width", None)
+            height = getattr(info, "height", None)
+            if (width is not None and isinstance(width, (int, float)) and width >= 0
+                    and height is not None and isinstance(height, (int, float)) and height >= 0):
+                print(f"  尺寸: {int(width)} x {int(height)} px")
+            else:
+                print(f"  尺寸: 未知")
+        except Exception:
+            try:
+                print(f"  尺寸: 未知")
+            except Exception:
+                pass
+
+        try:
+            ar = getattr(info, "aspect_ratio", None)
+            if ar is not None and isinstance(ar, (int, float)) and ar >= 0:
+                print(f"  比例: {float(ar):.3f}")
+            else:
+                print(f"  比例: 未知")
+        except Exception:
+            try:
+                print(f"  比例: 未知")
+            except Exception:
+                pass
+
+        try:
+            fsm = getattr(info, "file_size_mb", None)
+            if fsm is not None and isinstance(fsm, (int, float)) and fsm >= 0:
+                print(f"  大小: {float(fsm):.2f} MB")
+            else:
+                print(f"  大小: 未知")
+        except Exception:
+            try:
+                print(f"  大小: 未知")
+            except Exception:
+                pass
+
+        try:
+            fmt = getattr(info, "format", "")
+            print(f"  格式: {str(fmt) if fmt else ''}")
+        except Exception:
+            pass
+
+        try:
+            mode = getattr(info, "mode", "")
+            if mode and isinstance(mode, str) and mode.strip():
+                print(f"  颜色模式: {mode}")
+        except Exception:
+            pass
+
+        try:
+            issues = getattr(info, "issues", [])
+            if isinstance(issues, list) and issues:
+                print(f"\n  问题:")
+                for issue in issues:
+                    try:
+                        print(f"    - {str(issue)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        try:
+            warnings = getattr(info, "warnings", [])
+            if isinstance(warnings, list) and warnings:
+                print(f"\n  警告:")
+                for w in warnings:
+                    try:
+                        print(f"    - {str(w)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
     def print_generated_content(self, result: EpisodeProcessResult):
-        if not result.generated_content:
+        try:
+            if result.generated_content is None:
+                return
+        except Exception:
             return
 
         content = result.generated_content
 
-        self.print_section("📝 生成内容")
+        try:
+            self.print_section(" 生成内容")
+        except Exception:
+            pass
 
-        if content.title_candidates:
-            print(f"\n  🏷️  标题候选:")
-            for i, title in enumerate(content.title_candidates, 1):
-                print(f"    {i}. {title}")
+        try:
+            tcs = getattr(content, "title_candidates", None)
+            if isinstance(tcs, list) and tcs:
+                print(f"\n   标题候选:")
+                for i, title in enumerate(tcs, 1):
+                    try:
+                        if isinstance(title, str):
+                            print(f"    {i}. {title}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
-        if content.timeline:
-            print(f"\n  ⏱️  时间轴草稿:")
-            for item in content.timeline:
-                print(f"    [{item['time']}] {item['topic']}")
+        try:
+            tl = getattr(content, "timeline", None)
+            if isinstance(tl, list) and tl:
+                print(f"\n   时间轴草稿:")
+                for item in tl:
+                    try:
+                        if isinstance(item, dict):
+                            t = item.get("time", "")
+                            tp = item.get("topic", "")
+                            print(f"    [{str(t)}] {str(tp)}")
+                        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                            print(f"    [{str(item[0])}] {str(item[1])}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
-        if content.guest_intro:
-            print(f"\n  👤 嘉宾介绍:")
-            print(f"    {content.guest_intro[:100]}..." if len(content.guest_intro) > 100 else f"    {content.guest_intro}")
+        try:
+            gi = getattr(content, "guest_intro", "")
+            if gi and isinstance(gi, str) and gi.strip():
+                print(f"\n   嘉宾介绍:")
+                if len(gi) > 100:
+                    print(f"    {gi[:100]}...")
+                else:
+                    print(f"    {gi}")
+        except Exception:
+            pass
 
-        if content.social_media:
-            print(f"\n  📱 社媒文案:")
-            for platform, text in content.social_media.items():
-                print(f"    - {platform}: {text[:50]}...")
+        try:
+            sm = getattr(content, "social_media", None)
+            if isinstance(sm, dict) and sm:
+                print(f"\n   社媒文案:")
+                for platform, text in sm.items():
+                    try:
+                        safe_text = str(text) if isinstance(text, str) else ""
+                        if len(safe_text) > 50:
+                            print(f"    - {str(platform)}: {safe_text[:50]}...")
+                        else:
+                            print(f"    - {str(platform)}: {safe_text}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
-        if content.todo_list:
-            print(f"\n  ✅ 待办清单:")
-            for item in content.todo_list[:3]:
-                print(f"    - {item}")
-            if len(content.todo_list) > 3:
-                print(f"    ... 共 {len(content.todo_list)} 项")
+        try:
+            tdl = getattr(content, "todo_list", None)
+            if isinstance(tdl, list) and tdl:
+                print(f"\n   待办清单:")
+                shown = 0
+                for item in tdl:
+                    try:
+                        if isinstance(item, str):
+                            print(f"    - {item}")
+                            shown += 1
+                            if shown >= 3:
+                                break
+                    except Exception:
+                        continue
+                if len(tdl) > 3:
+                    print(f"    ... 共 {len(tdl)} 项")
+        except Exception:
+            pass
 
-        if content.warnings:
-            print(f"\n  警告:")
-            for w in content.warnings:
-                print(f"    - {w}")
+        try:
+            warnings = getattr(content, "warnings", [])
+            if isinstance(warnings, list) and warnings:
+                print(f"\n  警告:")
+                for w in warnings:
+                    try:
+                        print(f"    - {str(w)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
     def print_release_package(self, result: EpisodeProcessResult):
-        if not result.release_package:
+        try:
+            if result.release_package is None:
+                return
+        except Exception:
             return
 
         pkg = result.release_package
 
-        self.print_section("📦 发布包")
+        try:
+            self.print_section(" 发布包")
+        except Exception:
+            pass
 
-        print(f"\n  期号: {pkg.episode_number}")
-        print(f"  标题: {pkg.title}")
-        print(f"  输出目录: {pkg.output_dir}")
-        print(f"  状态: {'✅ 准备就绪' if pkg.is_ready else '⚠️  存在问题'}")
+        try:
+            ep = getattr(pkg, "episode_number", "")
+            print(f"\n  期号: {str(ep) if ep else ''}")
+        except Exception:
+            pass
 
-        if pkg.checklist:
-            print(f"\n  检查清单:")
-            for item, checked in pkg.checklist:
-                status = "✅" if checked else "⬜"
-                print(f"    {status} {item}")
+        try:
+            title = getattr(pkg, "title", "")
+            print(f"  标题: {str(title) if title else ''}")
+        except Exception:
+            pass
 
-        if pkg.rename_plans:
-            print(f"\n  重命名计划:")
-            for plan in pkg.rename_plans:
-                status = "✅" if plan.success else "⏳"
-                print(f"    {status} {plan.file_type}:")
-                print(f"       原: {os.path.basename(plan.source)}")
-                print(f"       新: {os.path.basename(plan.target)}")
+        try:
+            od = getattr(pkg, "output_dir", "")
+            print(f"  输出目录: {str(od) if od else ''}")
+        except Exception:
+            pass
+
+        try:
+            is_ready = bool(getattr(pkg, "is_ready", False))
+            print(f"  状态: {' 准备就绪' if is_ready else '  存在问题'}")
+        except Exception:
+            pass
+
+        try:
+            checklist = getattr(pkg, "checklist", [])
+            if isinstance(checklist, list) and checklist:
+                print(f"\n  检查清单:")
+                for item in checklist:
+                    try:
+                        if isinstance(item, (list, tuple)) and len(item) >= 2:
+                            name, checked = item[0], bool(item[1])
+                            status = "" if checked else ""
+                            print(f"    {status} {str(name)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        try:
+            plans = getattr(pkg, "rename_plans", [])
+            if isinstance(plans, list) and plans:
+                print(f"\n  重命名计划:")
+                for plan in plans:
+                    try:
+                        success = bool(getattr(plan, "success", False))
+                        ft = getattr(plan, "file_type", "")
+                        src = getattr(plan, "source", "")
+                        tgt = getattr(plan, "target", "")
+                        status = "" if success else ""
+                        print(f"    {status} {str(ft)}:")
+                        if src and isinstance(src, str):
+                            print(f"       原: {os.path.basename(src)}")
+                        if tgt and isinstance(tgt, str):
+                            print(f"       新: {os.path.basename(tgt)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
     def process_directory(self, directory: str):
-        print(f"\n🔍 正在处理目录: {directory}")
+        try:
+            print(f"\n 正在处理目录: {str(directory) if directory else ''}")
+        except Exception:
+            pass
 
-        result = self.processor.process_episode(directory)
+        result = None
+        try:
+            if self.processor is None:
+                try:
+                    print("   处理器未初始化")
+                except Exception:
+                    pass
+                from src.processor import EpisodeProcessResult
+                result = EpisodeProcessResult(episode_number="未知", directory=str(directory) if directory else "")
+                result.errors.append("处理器未初始化")
+                self.current_result = result
+                return result
+            result = self.processor.process_episode(directory)
+        except Exception as e:
+            try:
+                from src.processor import EpisodeProcessResult
+                result = EpisodeProcessResult(episode_number="未知", directory=str(directory) if directory else "")
+                result.errors.append(f"处理异常: {e}")
+            except Exception:
+                pass
+
         self.current_result = result
 
-        self.print_validation_result(result)
-        self.print_audio_info(result)
-        self.print_cover_info(result)
-        self.print_generated_content(result)
-        self.print_release_package(result)
+        try:
+            self.print_validation_result(result)
+        except Exception:
+            pass
+        try:
+            self.print_audio_info(result)
+        except Exception:
+            pass
+        try:
+            self.print_cover_info(result)
+        except Exception:
+            pass
+        try:
+            self.print_generated_content(result)
+        except Exception:
+            pass
+        try:
+            self.print_release_package(result)
+        except Exception:
+            pass
+
+        try:
+            if result is not None and getattr(result, "errors", None):
+                print(f"\n 处理过程中的错误:")
+                for err in result.errors:
+                    try:
+                        print(f"    ! {str(err)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
         return result
 
     def interactive_release(self, result: EpisodeProcessResult):
-        if not result.release_package:
-            print("❌ 没有可发布的内容")
+        try:
+            if result is None or result.release_package is None:
+                print(" 没有可发布的内容")
+                return
+        except Exception:
+            try:
+                print(" 没有可发布的内容")
+            except Exception:
+                pass
             return
 
-        print("\n" + "=" * 60)
-        print("  确认发布")
-        print("=" * 60)
+        try:
+            print("\n" + "=" * 60)
+            print("  确认发布")
+            print("=" * 60)
+        except Exception:
+            pass
 
-        title = result.release_package.title
-        print(f"\n  当前标题: {title}")
+        try:
+            title = getattr(result.release_package, "title", "")
+            print(f"\n  当前标题: {str(title) if title else ''}")
+        except Exception:
+            pass
 
-        choice = input("\n  是否修改标题？(y/N): ").strip().lower()
+        choice = safe_input("\n  是否修改标题？(y/N): ").strip().lower()
         if choice == "y":
-            new_title = input("  请输入新标题: ").strip()
+            new_title = safe_input("  请输入新标题: ").strip()
             if new_title:
-                result.release_package.title = new_title
+                try:
+                    result.release_package.title = new_title
+                except Exception:
+                    pass
 
-        print(f"\n  将生成以下文件到: {result.release_package.output_dir}")
-        for plan in result.release_package.rename_plans:
-            print(f"    - {os.path.basename(plan.target)}")
+        try:
+            od = getattr(result.release_package, "output_dir", "")
+            print(f"\n  将生成以下文件到: {str(od) if od else ''}")
+        except Exception:
+            pass
 
-        choice = input("\n  确认执行重命名和生成发布文件？(y/N): ").strip().lower()
+        try:
+            plans = getattr(result.release_package, "rename_plans", [])
+            if isinstance(plans, list):
+                for plan in plans:
+                    try:
+                        tgt = getattr(plan, "target", "")
+                        if tgt and isinstance(tgt, str):
+                            print(f"    - {os.path.basename(tgt)}")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        choice = safe_input("\n  确认执行重命名和生成发布文件？(y/N): ").strip().lower()
         if choice != "y":
             print("  已取消")
             return
 
-        print("\n  🚀 正在生成发布包...")
+        try:
+            print("\n   正在生成发布包...")
+        except Exception:
+            pass
 
         try:
-            pkg = self.processor.confirm_and_release(
-                result, title=result.release_package.title
-            )
+            if self.processor is None:
+                try:
+                    print("  处理器未初始化")
+                except Exception:
+                    pass
+                return
 
-            print("\n  ✅ 发布包生成完成！")
-            print(f"\n  输出目录: {pkg.output_dir}")
-            print(f"\n  生成的文件:")
-            for f in pkg.generated_files:
-                print(f"    - {os.path.basename(f)}")
+            use_title = None
+            try:
+                if result.release_package is not None:
+                    t = getattr(result.release_package, "title", None)
+                    if t and isinstance(t, str) and t.strip():
+                        use_title = t
+            except Exception:
+                use_title = None
 
-            choice = input("\n  是否归档本期素材？(y/N): ").strip().lower()
+            pkg, errors = self.processor.confirm_and_release(result, title=use_title)
+
+            if isinstance(errors, list) and errors:
+                try:
+                    print(f"\n  发布过程中出现问题:")
+                    for e in errors:
+                        print(f"    ! {str(e)}")
+                except Exception:
+                    pass
+
+            if pkg is None:
+                try:
+                    print("   发布失败")
+                except Exception:
+                    pass
+                return
+
+            try:
+                print("\n   发布包生成完成！")
+            except Exception:
+                pass
+
+            try:
+                od = getattr(pkg, "output_dir", "")
+                print(f"\n  输出目录: {str(od) if od else ''}")
+            except Exception:
+                pass
+
+            try:
+                gf = getattr(pkg, "generated_files", [])
+                if isinstance(gf, list) and gf:
+                    print(f"\n  生成的文件:")
+                    for f in gf:
+                        try:
+                            if isinstance(f, str):
+                                print(f"    - {os.path.basename(f)}")
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            choice = safe_input("\n  是否归档本期素材？(y/N): ").strip().lower()
             if choice == "y":
-                success = self.processor.archive_episode(result)
-                if success:
-                    print(f"  ✅ 已归档到: {pkg.archive_dir}")
-                else:
-                    print("  ❌ 归档失败")
+                try:
+                    success = self.processor.archive_episode(result)
+                    if success:
+                        try:
+                            ad = getattr(pkg, "archive_dir", "")
+                            print(f"   已归档到: {str(ad) if ad else ''}")
+                        except Exception:
+                            print("   已归档")
+                    else:
+                        print("   归档失败")
+                except Exception:
+                    try:
+                        print("   归档失败")
+                    except Exception:
+                        pass
 
         except Exception as e:
-            print(f"❌ 发布失败: {e}")
+            try:
+                print(f" 发布失败: {e}")
+            except Exception:
+                pass
 
     def start_watcher(self):
-        self.print_section("👀 文件夹监听模式")
+        try:
+            self.print_section(" 文件夹监听模式")
+        except Exception:
+            pass
 
-        print(f"\n  监听目录: {self.config.input_dir}")
-        print("  放入音频、封面、嘉宾资料和摘要后将自动检测")
-        print("  按 Ctrl+C 停止监听\n")
+        try:
+            in_dir = getattr(self.config, "input_dir", "")
+            print(f"\n  监听目录: {str(in_dir) if in_dir else ''}")
+        except Exception:
+            pass
+
+        try:
+            print("  放入音频、封面、嘉宾资料和摘要后将自动检测")
+            print("  按 Ctrl+C 停止监听\n")
+        except Exception:
+            pass
 
         def on_new_episode(directory):
-            print(f"\n  🎉 检测到新期数素材: {directory}")
-            result = self.process_directory(directory)
+            try:
+                d = str(directory) if directory else ""
+                print(f"\n   检测到新期数素材: {d}")
+                result = self.process_directory(directory)
 
-            if result.is_valid:
-                print("\n  ✅ 所有校验通过！")
-            else:
-                print("\n  ⚠️  存在需要处理的问题")
+                try:
+                    is_valid = bool(getattr(result, "is_valid", False))
+                    if is_valid:
+                        print("\n   所有校验通过！")
+                    else:
+                        print("\n    存在需要处理的问题")
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
         def on_file_change(filepath, event_type):
-            filename = os.path.basename(filepath)
-            print(f"  [文件{event_type}] {filename}")
+            try:
+                if isinstance(filepath, str):
+                    filename = os.path.basename(filepath)
+                    et = str(event_type) if event_type else ""
+                    print(f"  [文件{et}] {filename}")
+            except Exception:
+                pass
 
-        self.watcher = FolderWatcher(
-            self.config,
-            on_change=on_file_change,
-            on_new_episode=on_new_episode,
-        )
+        try:
+            self.watcher = FolderWatcher(
+                self.config,
+                on_change=on_file_change,
+                on_new_episode=on_new_episode,
+            )
+        except Exception as e:
+            try:
+                print(f"   监听器初始化失败: {e}")
+            except Exception:
+                pass
+            return
 
-        self.watcher.start()
+        try:
+            self.watcher.start()
+        except Exception as e:
+            try:
+                print(f"   监听启动失败: {e}")
+            except Exception:
+                pass
+            return
 
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("\n\n  停止监听...")
-            self.watcher.stop()
-            print("  已停止")
+            try:
+                print("\n\n  停止监听...")
+            except Exception:
+                pass
+            try:
+                if self.watcher is not None:
+                    self.watcher.stop()
+            except Exception:
+                pass
+            try:
+                print("  已停止")
+            except Exception:
+                pass
 
     def show_menu(self):
         self.print_header()
-        print("\n  请选择操作:")
-        print()
-        print("  1. 扫描输入目录")
-        print("  2. 扫描指定目录")
-        print("  3. 启动文件夹监听")
-        print("  4. 查看当前结果")
-        print("  5. 确认并生成发布包")
-        print("  6. 显示配置信息")
-        print("  0. 退出")
-        print()
+        try:
+            print("\n  请选择操作:")
+            print()
+            print("  1. 扫描输入目录")
+            print("  2. 扫描指定目录")
+            print("  3. 启动文件夹监听")
+            print("  4. 查看当前结果")
+            print("  5. 确认并生成发布包")
+            print("  6. 显示配置信息")
+            print("  0. 退出")
+            print()
+        except Exception:
+            pass
 
     def show_config(self):
-        self.print_section("⚙️  配置信息")
+        try:
+            self.print_section(" 配置信息")
+        except Exception:
+            pass
 
-        print(f"\n  输入目录: {self.config.input_dir}")
-        print(f"  输出目录: {self.config.output_dir}")
-        print(f"  归档目录: {self.config.archive_dir}")
+        try:
+            in_dir = getattr(self.config, "input_dir", "")
+            print(f"\n  输入目录: {str(in_dir) if in_dir else ''}")
+        except Exception:
+            pass
 
-        print(f"\n  音频扩展名: {', '.join(self.config.get('naming.audio_extensions', []))}")
-        print(f"  封面扩展名: {', '.join(self.config.get('naming.cover_extensions', []))}")
+        try:
+            out_dir = getattr(self.config, "output_dir", "")
+            print(f"  输出目录: {str(out_dir) if out_dir else ''}")
+        except Exception:
+            pass
 
-        audio_cfg = self.config.get("audio", {})
-        if audio_cfg:
-            print(f"\n  音频最小时长: {format_duration(audio_cfg.get('min_duration_seconds', 60))}")
-            print(f"  音频最大时长: {format_duration(audio_cfg.get('max_duration_seconds', 7200))}")
-            print(f"  推荐格式: {audio_cfg.get('preferred_format', 'mp3')}")
+        try:
+            arc_dir = getattr(self.config, "archive_dir", "")
+            print(f"  归档目录: {str(arc_dir) if arc_dir else ''}")
+        except Exception:
+            pass
 
-        cover_cfg = self.config.get("cover", {})
-        if cover_cfg:
-            print(f"\n  封面最小尺寸: {cover_cfg.get('min_width', 1400)}x{cover_cfg.get('min_height', 1400)}")
-            print(f"  目标比例: {cover_cfg.get('target_ratio', 1.0)}")
-            print(f"  最大文件大小: {cover_cfg.get('max_file_size_mb', 5)} MB")
+        try:
+            audio_exts = self.config.get("naming.audio_extensions", [])
+            if isinstance(audio_exts, list):
+                str_exts = [str(e) for e in audio_exts if isinstance(e, str)]
+                print(f"\n  音频扩展名: {', '.join(str_exts)}")
+        except Exception:
+            pass
 
-        sensitive_words = self.config.get("sensitive_words", [])
-        if sensitive_words:
-            print(f"\n  敏感词列表: {', '.join(sensitive_words)}")
+        try:
+            cover_exts = self.config.get("naming.cover_extensions", [])
+            if isinstance(cover_exts, list):
+                str_exts = [str(e) for e in cover_exts if isinstance(e, str)]
+                print(f"  封面扩展名: {', '.join(str_exts)}")
+        except Exception:
+            pass
+
+        try:
+            audio_cfg = self.config.get("audio", {})
+            if isinstance(audio_cfg, dict) and audio_cfg:
+                min_dur = audio_cfg.get("min_duration_seconds", 60)
+                max_dur = audio_cfg.get("max_duration_seconds", 7200)
+                pref_fmt = audio_cfg.get("preferred_format", "mp3")
+                print(f"\n  音频最小时长: {format_duration(min_dur)}")
+                print(f"  音频最大时长: {format_duration(max_dur)}")
+                print(f"  推荐格式: {str(pref_fmt)}")
+        except Exception:
+            pass
+
+        try:
+            cover_cfg = self.config.get("cover", {})
+            if isinstance(cover_cfg, dict) and cover_cfg:
+                mw = cover_cfg.get("min_width", 1400)
+                mh = cover_cfg.get("min_height", 1400)
+                tr = cover_cfg.get("target_ratio", 1.0)
+                mfsm = cover_cfg.get("max_file_size_mb", 5)
+                print(f"\n  封面最小尺寸: {mw}x{mh}")
+                print(f"  目标比例: {tr}")
+                print(f"  最大文件大小: {mfsm} MB")
+        except Exception:
+            pass
+
+        try:
+            sensitive_words = self.config.get("sensitive_words", [])
+            if isinstance(sensitive_words, list) and sensitive_words:
+                safe_words = [str(w) for w in sensitive_words if isinstance(w, str)]
+                print(f"\n  敏感词列表: {', '.join(safe_words)}")
+        except Exception:
+            pass
 
     def run(self):
-        ensure_directory(self.config.input_dir)
-        ensure_directory(self.config.output_dir)
-        ensure_directory(self.config.archive_dir)
+        try:
+            in_dir = getattr(self.config, "input_dir", None)
+            if in_dir:
+                ensure_directory(str(in_dir))
+        except Exception:
+            pass
+        try:
+            out_dir = getattr(self.config, "output_dir", None)
+            if out_dir:
+                ensure_directory(str(out_dir))
+        except Exception:
+            pass
+        try:
+            arc_dir = getattr(self.config, "archive_dir", None)
+            if arc_dir:
+                ensure_directory(str(arc_dir))
+        except Exception:
+            pass
 
         parser = argparse.ArgumentParser(description="播客素材整理工具")
         parser.add_argument("directory", nargs="?", help="要处理的目录路径")
@@ -351,97 +945,226 @@ class PodcastToolCLI:
         parser.add_argument("--release", "-r", action="store_true", help="自动生成发布包")
         parser.add_argument("--config", "-c", help="配置文件路径")
 
-        args = parser.parse_args()
-
-        if args.config:
-            self.config = Config(args.config)
-            self.processor = EpisodeProcessor(self.config)
-
-        if args.directory:
-            result = self.process_directory(args.directory)
-            if args.release and result.is_valid:
-                self.interactive_release(result)
+        try:
+            args = parser.parse_args()
+        except SystemExit:
+            return
+        except Exception:
             return
 
-        if args.watch:
-            self.start_watcher()
-            return
+        try:
+            if args.config:
+                self.config = Config(args.config)
+                try:
+                    self.processor = EpisodeProcessor(self.config)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
-        if args.scan:
-            self.scan_input_directory()
-            return
+        try:
+            if args.directory:
+                result = self.process_directory(args.directory)
+                try:
+                    if args.release and result is not None and getattr(result, "is_valid", False):
+                        self.interactive_release(result)
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
 
-        self._interactive_loop()
+        try:
+            if args.watch:
+                self.start_watcher()
+                return
+        except Exception:
+            pass
+
+        try:
+            if args.scan:
+                self.scan_input_directory()
+                return
+        except Exception:
+            pass
+
+        try:
+            self._interactive_loop()
+        except Exception:
+            pass
 
     def _interactive_loop(self):
         while True:
-            self.show_menu()
-            choice = input("  请输入选项 [0-6]: ").strip()
+            try:
+                self.show_menu()
+                choice = safe_input("  请输入选项 [0-6]: ").strip()
 
-            if choice == "0":
-                print("\n👋 再见！")
+                if choice == "0":
+                    try:
+                        print("\n 再见！")
+                    except Exception:
+                        pass
+                    break
+
+                elif choice == "1":
+                    self.scan_input_directory()
+
+                elif choice == "2":
+                    directory = safe_input("\n  请输入目录路径: ").strip()
+                    try:
+                        if directory and isinstance(directory, str) and os.path.exists(directory):
+                            self.process_directory(directory)
+                        else:
+                            print("   目录不存在")
+                    except Exception:
+                        try:
+                            print("   目录检查失败")
+                        except Exception:
+                            pass
+
+                elif choice == "3":
+                    self.start_watcher()
+
+                elif choice == "4":
+                    if self.current_result is not None:
+                        try:
+                            self.print_validation_result(self.current_result)
+                        except Exception:
+                            pass
+                        try:
+                            self.print_audio_info(self.current_result)
+                        except Exception:
+                            pass
+                        try:
+                            self.print_cover_info(self.current_result)
+                        except Exception:
+                            pass
+                        try:
+                            self.print_generated_content(self.current_result)
+                        except Exception:
+                            pass
+                        try:
+                            self.print_release_package(self.current_result)
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            print("\n  暂无结果，请先扫描目录")
+                        except Exception:
+                            pass
+
+                elif choice == "5":
+                    if self.current_result is not None:
+                        self.interactive_release(self.current_result)
+                    else:
+                        try:
+                            print("\n  暂无结果，请先扫描目录")
+                        except Exception:
+                            pass
+
+                elif choice == "6":
+                    self.show_config()
+
+                else:
+                    try:
+                        print("\n   无效选项")
+                    except Exception:
+                        pass
+
+                safe_input("\n  按回车键继续...")
+
+            except KeyboardInterrupt:
+                try:
+                    print("\n\n 再见！")
+                except Exception:
+                    pass
                 break
-
-            elif choice == "1":
-                self.scan_input_directory()
-
-            elif choice == "2":
-                directory = input("\n  请输入目录路径: ").strip()
-                if directory and os.path.exists(directory):
-                    self.process_directory(directory)
-                else:
-                    print("  ❌ 目录不存在")
-
-            elif choice == "3":
-                self.start_watcher()
-
-            elif choice == "4":
-                if self.current_result:
-                    self.print_validation_result(self.current_result)
-                    self.print_audio_info(self.current_result)
-                    self.print_cover_info(self.current_result)
-                    self.print_generated_content(self.current_result)
-                    self.print_release_package(self.current_result)
-                else:
-                    print("\n  暂无结果，请先扫描目录")
-
-            elif choice == "5":
-                if self.current_result:
-                    self.interactive_release(self.current_result)
-                else:
-                    print("\n  暂无结果，请先扫描目录")
-
-            elif choice == "6":
-                self.show_config()
-
-            else:
-                print("\n  ❌ 无效选项")
-
-            input("\n  按回车键继续...")
+            except Exception:
+                try:
+                    safe_input("\n  按回车键继续...")
+                except Exception:
+                    pass
 
     def scan_input_directory(self):
-        input_dir = self.config.input_dir
-        ensure_directory(input_dir)
+        try:
+            input_dir = getattr(self.config, "input_dir", None)
+            if not input_dir:
+                try:
+                    print("   输入目录未配置")
+                except Exception:
+                    pass
+                return
+            input_dir = str(input_dir)
+        except Exception:
+            try:
+                print("   输入目录获取失败")
+            except Exception:
+                pass
+            return
+
+        try:
+            ensure_directory(input_dir)
+        except Exception:
+            pass
 
         subdirs = []
-        for item in os.listdir(input_dir):
-            item_path = os.path.join(input_dir, item)
-            if os.path.isdir(item_path):
-                subdirs.append(item_path)
+        try:
+            if not os.path.exists(input_dir):
+                try:
+                    print(f"   输入目录不存在: {input_dir}")
+                except Exception:
+                    pass
+                return
+            for item in os.listdir(input_dir):
+                try:
+                    item_path = os.path.join(input_dir, item)
+                    if os.path.isdir(item_path):
+                        subdirs.append(item_path)
+                except Exception:
+                    continue
+        except (OSError, PermissionError) as e:
+            try:
+                print(f"   扫描输入目录失败: {e}")
+            except Exception:
+                pass
+            return
+        except Exception:
+            try:
+                print("   扫描输入目录异常")
+            except Exception:
+                pass
+            return
 
         if not subdirs:
-            print(f"\n📂 扫描根目录: {input_dir}")
+            try:
+                print(f"\n 扫描根目录: {input_dir}")
+            except Exception:
+                pass
             self.process_directory(input_dir)
         else:
-            print(f"\n📂 发现 {len(subdirs)} 个子目录")
+            try:
+                print(f"\n 发现 {len(subdirs)} 个子目录")
+            except Exception:
+                pass
             for i, subdir in enumerate(subdirs, 1):
-                print(f"\n  [{i}] {os.path.basename(subdir)}")
+                try:
+                    print(f"\n  [{i}] {os.path.basename(subdir)}")
+                except Exception:
+                    pass
                 self.process_directory(subdir)
 
 
 def main():
-    cli = PodcastToolCLI()
-    cli.run()
+    try:
+        cli = PodcastToolCLI()
+        cli.run()
+    except KeyboardInterrupt:
+        try:
+            print("\n 已退出")
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

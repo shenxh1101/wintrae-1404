@@ -82,14 +82,23 @@ class MaterialValidator:
         return result
 
     def _detect_episode_number(self, directory: str) -> Optional[str]:
-        dir_name = os.path.basename(os.path.normpath(directory))
+        try:
+            dir_name = os.path.basename(os.path.normpath(directory))
+        except (OSError, ValueError, TypeError):
+            dir_name = ""
         episode_num = extract_episode_number(dir_name, self.episode_pattern)
         if episode_num:
             return episode_num
 
-        all_files = []
-        for root, dirs, files in os.walk(directory):
-            all_files.extend(files)
+        all_files: List[str] = []
+        try:
+            for root, dirs, files in os.walk(directory):
+                try:
+                    all_files.extend(files)
+                except (OSError, ValueError, TypeError):
+                    continue
+        except (OSError, PermissionError, ValueError, TypeError):
+            pass
 
         for filename in sorted(all_files):
             episode_num = extract_episode_number(filename, self.episode_pattern)
