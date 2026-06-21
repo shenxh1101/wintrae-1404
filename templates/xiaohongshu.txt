@@ -1,0 +1,14 @@
+📻 第{{ episode_number }}期播客上线！
+
+✨ 本期主题：{{ title }}
+
+🎤 嘉宾：{{ guest_name }}
+{{ guest_title }}
+
+💡 你将听到：
+{{ bullet_points }}
+
+⏰ 时间：{{ publish_date }}
+🔗 收听方式见评论区
+
+#播客推荐 #{{ tags }} #深度对话

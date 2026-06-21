@@ -1,0 +1,11 @@
+New episode out now! 🎙️
+
+{{ title_en }}
+
+Feat. {{ guest_name_en }}
+
+{{ summary_en }}
+
+Listen here: {{ listen_link }}
+
+#Podcast #{{ tags_en }}

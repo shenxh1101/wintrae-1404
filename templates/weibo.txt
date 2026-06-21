@@ -1,0 +1,9 @@
+【{{ episode_number }}期】{{ short_title }}
+
+嘉宾：{{ guest_name }} | {{ guest_title }}
+
+{{ summary_short }}
+
+#播客 #{{ tags }}
+
+🔗 收听链接：{{ listen_link }}

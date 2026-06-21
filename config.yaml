@@ -1,0 +1,68 @@
+
+# 播客素材整理工具配置
+
+# 监听目录配置
+watch:
+  input_dir: "./input"
+  output_dir: "./output"
+  archive_dir: "./archive"
+
+# 文件命名规范
+naming:
+  episode_pattern: "^(\\d{3})"
+  audio_extensions: [".mp3", ".wav", ".m4a", ".flac", ".aac"]
+  cover_extensions: [".jpg", ".jpeg", ".png", ".webp"]
+  guest_extensions: [".md", ".txt"]
+  summary_extensions: [".md", ".txt"]
+  required_files:
+    - "audio"
+    - "cover"
+    - "guest"
+    - "summary"
+
+# 音频校验配置
+audio:
+  min_duration_seconds: 60
+  max_duration_seconds: 7200
+  preferred_format: "mp3"
+  preferred_bitrate: 192000
+
+# 封面校验配置
+cover:
+  min_width: 1400
+  min_height: 1400
+  target_ratio: 1.0
+  ratio_tolerance: 0.01
+  max_file_size_mb: 5
+
+# 敏感词配置
+sensitive_words:
+  - "TODO"
+  - "待补充"
+  - "placeholder"
+  - "xxx"
+  - "XXX"
+  - "示例"
+  - "test"
+  - "TEST"
+
+# 模板配置
+templates:
+  title_candidates: 5
+  social_media_platforms:
+    - "weibo"
+    - "xiaohongshu"
+    - "wechat"
+    - "twitter"
+
+# 发布清单配置
+checklist:
+  items:
+    - "音频文件已校验"
+    - "封面图符合规范"
+    - "嘉宾资料已确认"
+    - "节目简介已审核"
+    - "标题候选已生成"
+    - "时间轴草稿已生成"
+    - "社媒文案已准备"
+    - "文件已批量重命名"

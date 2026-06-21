@@ -1,0 +1,22 @@
+# 第{{ episode_number }}期 | {{ title }}
+
+> {{ subtitle }}
+
+## 嘉宾介绍
+
+**{{ guest_name }}**
+{{ guest_title }}
+
+{{ guest_bio }}
+
+## 本期亮点
+
+{{ highlights }}
+
+## 收听方式
+
+{{ listen_options }}
+
+---
+*{{ podcast_name }}*
+{{ footer }}
