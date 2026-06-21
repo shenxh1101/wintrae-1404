@@ -2,8 +2,9 @@
 import os
 import json
 import copy
+import hashlib
 import threading
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +18,35 @@ EPISODE_STATUS_PROCESSING = "processing"
 EPISODE_STATUS_RELEASED = "released"
 EPISODE_STATUS_ARCHIVED = "archived"
 EPISODE_STATUS_ERROR = "error"
+
+
+def compute_file_hash(filepath: str) -> Optional[str]:
+    try:
+        if not filepath or not os.path.exists(filepath):
+            return None
+        if not os.path.isfile(filepath):
+            return None
+        h = hashlib.md5()
+        with open(filepath, "rb") as f:
+            while True:
+                chunk = f.read(65536)
+                if not chunk:
+                    break
+                h.update(chunk)
+        return h.hexdigest()
+    except (OSError, IOError, PermissionError):
+        return None
+
+
+def compute_content_hash(content: str) -> Optional[str]:
+    try:
+        if content is None:
+            return None
+        if isinstance(content, bytes):
+            return hashlib.md5(content).hexdigest()
+        return hashlib.md5(str(content).encode("utf-8")).hexdigest()
+    except Exception:
+        return None
 
 
 class EpisodeState:
@@ -47,6 +77,8 @@ class EpisodeState:
         self.output_dir: str = ""
         self.archive_dir: str = ""
         self.generated_files: List[str] = []
+        self.file_hashes: Dict[str, str] = {}
+        self.user_edited_files: List[str] = []
 
         self.warnings: List[str] = []
         self.errors: List[str] = []
@@ -65,6 +97,81 @@ class EpisodeState:
             self.updated_at = datetime.now().isoformat()
         except Exception:
             pass
+
+    def record_generated_file_hash(self, filepath: str, content: Optional[str] = None):
+        try:
+            if not filepath:
+                return
+            key = os.path.basename(filepath)
+            if not key:
+                key = str(filepath)
+            h = None
+            if content is not None:
+                h = compute_content_hash(content)
+            if not h:
+                h = compute_file_hash(filepath)
+            if h:
+                self.file_hashes[key] = h
+        except Exception:
+            pass
+
+    def is_file_user_edited(self, filepath: str) -> bool:
+        try:
+            if not filepath or not os.path.exists(filepath):
+                return False
+            key = os.path.basename(filepath)
+            if not key:
+                key = str(filepath)
+            if key in self.user_edited_files:
+                return True
+            if key not in self.file_hashes:
+                if self.custom_user_edits:
+                    return True
+                return False
+            current_hash = compute_file_hash(filepath)
+            if not current_hash:
+                return False
+            return current_hash != self.file_hashes[key]
+        except Exception:
+            return False
+
+    def scan_user_edited_files(self) -> List[str]:
+        edited: List[str] = []
+        try:
+            if not self.output_dir or not os.path.exists(self.output_dir):
+                return edited
+            seen_keys: set = set()
+            try:
+                if isinstance(self.generated_files, list):
+                    for fp in self.generated_files:
+                        try:
+                            if isinstance(fp, str) and fp and os.path.exists(fp):
+                                if self.is_file_user_edited(fp):
+                                    bn = os.path.basename(fp)
+                                    edited.append(bn)
+                                    seen_keys.add(bn)
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+            try:
+                if isinstance(self.user_edited_files, list):
+                    for f in self.user_edited_files:
+                        try:
+                            if isinstance(f, str) and f and f not in seen_keys:
+                                edited.append(f)
+                                seen_keys.add(f)
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+            try:
+                self.user_edited_files = [str(x) for x in edited if x]
+            except Exception:
+                pass
+            return edited
+        except Exception:
+            return edited
 
     def to_dict(self) -> Dict[str, Any]:
         try:
@@ -95,6 +202,8 @@ class EpisodeState:
                 "output_dir": str(self.output_dir) if self.output_dir else "",
                 "archive_dir": str(self.archive_dir) if self.archive_dir else "",
                 "generated_files": list(self.generated_files) if isinstance(self.generated_files, list) else [],
+                "file_hashes": dict(self.file_hashes) if isinstance(self.file_hashes, dict) else {},
+                "user_edited_files": list(self.user_edited_files) if isinstance(self.user_edited_files, list) else [],
 
                 "warnings": list(self.warnings) if isinstance(self.warnings, list) else [],
                 "errors": list(self.errors) if isinstance(self.errors, list) else [],
@@ -197,6 +306,11 @@ class EpisodeState:
                 state.archive_dir = str(data.get("archive_dir", ""))
                 gf = data.get("generated_files", [])
                 state.generated_files = [str(x) for x in gf if isinstance(x, str)] if isinstance(gf, list) else []
+                fh = data.get("file_hashes", {})
+                if isinstance(fh, dict):
+                    state.file_hashes = {str(k): str(v) for k, v in fh.items() if isinstance(k, str) and isinstance(v, str)}
+                uef = data.get("user_edited_files", [])
+                state.user_edited_files = [str(x) for x in uef if isinstance(x, str)] if isinstance(uef, list) else []
             except Exception:
                 pass
 
@@ -532,6 +646,15 @@ class StateManager:
                     except Exception:
                         pass
                     try:
+                        for f in state.generated_files:
+                            try:
+                                if isinstance(f, str) and f:
+                                    state.record_generated_file_hash(f)
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+                    try:
                         cl = getattr(rp, "checklist", None)
                         if isinstance(cl, list):
                             converted = []
@@ -754,12 +877,94 @@ class StateManager:
                 return False
             if state.custom_user_edits:
                 return True
-            if not state.output_dir or not os.path.exists(state.output_dir):
-                return False
-            meta_file = os.path.join(state.output_dir, ".user_edited")
-            return os.path.exists(meta_file)
+            if state.output_dir and os.path.exists(state.output_dir):
+                meta_file = os.path.join(state.output_dir, ".user_edited")
+                if os.path.exists(meta_file):
+                    return True
+                edited = state.scan_user_edited_files()
+                if edited:
+                    return True
+            return False
         except Exception:
             return False
+
+    def scan_user_edited_files(self, episode_number: str, directory: str = "") -> List[str]:
+        try:
+            with self._lock:
+                state = self.get_or_create(episode_number, directory)
+                edited = state.scan_user_edited_files()
+                if edited:
+                    state.custom_user_edits = True
+                    self._dirty = True
+                return edited
+        except Exception:
+            return []
+
+    def detect_conflicts(self, episode_number: str, directory: str = "",
+                          new_files: Optional[List[Tuple[str, Optional[str]]]] = None) -> List[Dict[str, Any]]:
+        conflicts: List[Dict[str, Any]] = []
+        try:
+            state = self.get(episode_number, directory)
+            if state is None or not state.output_dir or not os.path.exists(state.output_dir):
+                return conflicts
+            targets: List[Tuple[str, Optional[str]]] = []
+            try:
+                if new_files:
+                    for item in new_files:
+                        try:
+                            if isinstance(item, (list, tuple)) and len(item) >= 1:
+                                targets.append((str(item[0]), item[1] if len(item) > 1 else None))
+                        except Exception:
+                            continue
+                else:
+                    try:
+                        if isinstance(state.generated_files, list):
+                            for fp in state.generated_files:
+                                try:
+                                    if isinstance(fp, str) and fp and os.path.exists(fp):
+                                        targets.append((fp, None))
+                                except Exception:
+                                    continue
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            for filepath, new_content in targets:
+                try:
+                    if not filepath or not os.path.exists(filepath):
+                        continue
+                    bn = os.path.basename(filepath)
+                    is_edited = state.is_file_user_edited(filepath)
+                    if is_edited:
+                        conflict = {
+                            "filepath": str(filepath),
+                            "filename": bn,
+                            "is_user_edited": True,
+                            "old_hash": state.file_hashes.get(bn, ""),
+                            "current_hash": compute_file_hash(filepath),
+                        }
+                        if new_content is not None:
+                            conflict["new_hash"] = compute_content_hash(new_content)
+                            try:
+                                with open(filepath, "r", encoding="utf-8") as f:
+                                    old_lines = [ln for ln in f.read().splitlines() if ln.strip()]
+                                new_lines = [ln for ln in str(new_content).splitlines() if ln.strip()]
+                                conflict["delta_old_lines"] = max(0, len(old_lines) - len(new_lines))
+                                conflict["delta_new_lines"] = max(0, len(new_lines) - len(old_lines))
+                            except Exception:
+                                pass
+                        conflicts.append(conflict)
+                except Exception:
+                    continue
+            return conflicts
+        except Exception:
+            return conflicts
+
+    def list_conflicting_files(self, episode_number: str, directory: str = "") -> List[str]:
+        try:
+            return [str(c.get("filename", "")) for c in self.detect_conflicts(episode_number, directory) if c.get("is_user_edited")]
+        except Exception:
+            return []
 
     @property
     def dirty(self) -> bool:

@@ -41,6 +41,8 @@ class ReleasePackage:
     rename_plans: List[RenamePlan] = field(default_factory=list)
     checklist: List[Tuple[str, bool]] = field(default_factory=list)
     generated_files: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    conflicts: List[Dict] = field(default_factory=list)
     is_ready: bool = False
 
     def to_dict(self) -> dict:
@@ -53,6 +55,8 @@ class ReleasePackage:
             "rename_plans": [p.to_dict() for p in self.rename_plans],
             "checklist": [{"item": i, "checked": c} for i, c in self.checklist],
             "generated_files": self.generated_files,
+            "warnings": list(self.warnings) if isinstance(self.warnings, list) else [],
+            "conflicts": list(self.conflicts) if isinstance(self.conflicts, list) else [],
             "is_ready": self.is_ready,
         }
 
@@ -360,7 +364,9 @@ class ReleaseManager:
         return package
 
     def generate_release_documents(
-        self, package: ReleasePackage, generated_content
+        self, package: ReleasePackage, generated_content,
+        conflict_policy: str = "preserve",
+        user_edited_filenames: Optional[List[str]] = None,
     ) -> ReleasePackage:
         if not package:
             return package
@@ -373,6 +379,46 @@ class ReleaseManager:
 
         safe_ep = sanitize_filename(package.episode_number) if package.episode_number else "000"
 
+        try:
+            if not isinstance(package.warnings, list):
+                package.warnings = []
+            if not isinstance(package.conflicts, list):
+                package.conflicts = []
+        except Exception:
+            try:
+                package.warnings = []
+                package.conflicts = []
+            except Exception:
+                pass
+
+        def _existing_version_suffix(base_dir: str, stem: str, ext: str) -> str:
+            try:
+                now_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+                candidate = os.path.join(base_dir, f"{stem}_v1{ext}")
+                idx = 1
+                while os.path.exists(candidate) and idx < 9999:
+                    idx += 1
+                    candidate = os.path.join(base_dir, f"{stem}_v{idx}{ext}")
+                if idx >= 9999:
+                    candidate = os.path.join(base_dir, f"{stem}_{now_suffix}{ext}")
+                return candidate
+            except Exception:
+                try:
+                    return os.path.join(base_dir, f"{stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}")
+                except Exception:
+                    return os.path.join(base_dir, f"{stem}_backup{ext}")
+
+        def _is_user_edited(filepath: str) -> bool:
+            try:
+                if not user_edited_filenames:
+                    return False
+                bn = os.path.basename(filepath)
+                if bn in user_edited_filenames:
+                    return True
+                return False
+            except Exception:
+                return False
+
         def safe_write(filepath: str, content: str) -> bool:
             try:
                 if not filepath:
@@ -381,10 +427,63 @@ class ReleaseManager:
                 if fdir and not ensure_directory(fdir):
                     return False
                 safe_content = content if isinstance(content, str) else str(content) if content is not None else ""
-                with open(filepath, "w", encoding="utf-8") as f:
+                already_exists = os.path.exists(filepath)
+                is_conflict = already_exists and _is_user_edited(filepath)
+                policy = conflict_policy if conflict_policy in ("preserve", "overwrite", "keep_both") else "preserve"
+                written_path = filepath
+                if is_conflict:
+                    try:
+                        bn = os.path.basename(filepath)
+                        if policy == "preserve":
+                            try:
+                                package.conflicts.append({
+                                    "filename": bn, "filepath": filepath,
+                                    "action": "preserved", "reason": "检测到用户手改，已保留原文件",
+                                })
+                                package.warnings.append(f"{bn}: 检测到用户手改，已保留原文件不覆盖")
+                            except Exception:
+                                pass
+                            return True
+                        elif policy == "keep_both":
+                            try:
+                                stem, ext = os.path.splitext(bn)
+                                backup = _existing_version_suffix(os.path.dirname(filepath), stem, ext)
+                                try:
+                                    import shutil
+                                    shutil.copy2(filepath, backup)
+                                except Exception:
+                                    with open(filepath, "rb") as rf:
+                                        with open(backup, "wb") as wf:
+                                            wf.write(rf.read())
+                                try:
+                                    package.conflicts.append({
+                                        "filename": bn, "filepath": filepath,
+                                        "backup_file": backup,
+                                        "action": "keep_both",
+                                        "reason": "检测到用户手改，已将旧版本另存备份后写入新版本",
+                                    })
+                                    package.warnings.append(f"{bn}: 检测到用户手改，已另存旧版本为 {os.path.basename(backup)}")
+                                    if backup not in package.generated_files:
+                                        package.generated_files.append(backup)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                        elif policy == "overwrite":
+                            try:
+                                package.conflicts.append({
+                                    "filename": bn, "filepath": filepath,
+                                    "action": "overwritten",
+                                    "reason": "检测到用户手改，但按策略已覆盖",
+                                })
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                with open(written_path, "w", encoding="utf-8") as f:
                     f.write(safe_content)
-                if filepath not in package.generated_files:
-                    package.generated_files.append(filepath)
+                if written_path not in package.generated_files:
+                    package.generated_files.append(written_path)
                 return True
             except (OSError, IOError, PermissionError, UnicodeEncodeError):
                 return False

@@ -53,6 +53,7 @@ class PodcastToolCLI:
             self.dashboard = None
         self.watcher = None
         self.current_result = None
+        self._conflict_policy = "preserve"
 
     def print_header(self):
         try:
@@ -619,7 +620,7 @@ class PodcastToolCLI:
 
         return result
 
-    def interactive_release(self, result: EpisodeProcessResult):
+    def interactive_release(self, result: EpisodeProcessResult, conflict_policy: str = "preserve"):
         try:
             if result is None or result.release_package is None:
                 print(" 没有可发布的内容")
@@ -631,10 +632,15 @@ class PodcastToolCLI:
                 pass
             return
 
+        if conflict_policy not in ("preserve", "overwrite", "keep_both"):
+            conflict_policy = "preserve"
+
         try:
             print("\n" + "=" * 60)
             print("  确认发布")
             print("=" * 60)
+            policy_label = {"preserve": "保留用户手改（不覆盖）", "overwrite": "强制覆盖", "keep_both": "新旧版本都保留"}.get(conflict_policy, conflict_policy)
+            print(f"  冲突处理策略: {policy_label}")
         except Exception:
             pass
 
@@ -699,7 +705,9 @@ class PodcastToolCLI:
             except Exception:
                 use_title = None
 
-            pkg, errors = self.processor.confirm_and_release(result, title=use_title)
+            pkg, errors = self.processor.confirm_and_release(
+                result, title=use_title, conflict_policy=conflict_policy
+            )
 
             if isinstance(errors, list) and errors:
                 try:
@@ -735,6 +743,39 @@ class PodcastToolCLI:
                         try:
                             if isinstance(f, str):
                                 print(f"    - {os.path.basename(f)}")
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            try:
+                conflicts = getattr(pkg, "conflicts", [])
+                if isinstance(conflicts, list) and conflicts:
+                    print(f"\n  文案冲突处理 ({len(conflicts)} 项):")
+                    for c in conflicts:
+                        try:
+                            fn = str(c.get("filename", "?"))
+                            action = str(c.get("action", "?"))
+                            reason = str(c.get("reason", ""))
+                            backup = c.get("backup_file")
+                            suffix = f"（备份: {os.path.basename(str(backup))}）" if backup else ""
+                            action_label = {"preserved": "保留原文件", "overwritten": "已覆盖", "keep_both": "另存新旧版"}.get(action, action)
+                            print(f"    ! {fn}: {action_label} {suffix}")
+                            if reason and action == "preserved":
+                                print(f"      说明: {reason}")
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            try:
+                warnings = getattr(pkg, "warnings", [])
+                if isinstance(warnings, list) and warnings:
+                    print(f"\n  提示:")
+                    for w in warnings:
+                        try:
+                            if isinstance(w, str):
+                                print(f"    * {w}")
                         except Exception:
                             continue
             except Exception:
@@ -862,12 +903,17 @@ class PodcastToolCLI:
             print("  7. 期数看板（全部）")
             print("  8. 期数看板（仅就绪）")
             print("  9. 期数看板（仅待处理/有问题）")
+            print(" 10. 发布前复核（只预览不写入）")
+            print(" 11. 导出看板为 CSV")
+            print(" 12. 导出看板为 Markdown")
+            print(" 13. 设置文案冲突处理策略（当前: " + str(getattr(self, "_conflict_policy", "preserve")) + "）")
             print("  0. 退出")
             print()
         except Exception:
             pass
 
-    def show_dashboard(self, filter_name: str = FILTER_ALL):
+    def show_dashboard(self, filter_name: str = FILTER_ALL, from_ep=None, to_ep=None,
+                       updated_after=None, export_csv_path=None, export_md_path=None):
         try:
             if self.dashboard is None:
                 try:
@@ -879,8 +925,40 @@ class PodcastToolCLI:
                         pass
                     return
             try:
-                rows = self.dashboard.scan(filter_name=filter_name, save_state=True)
+                rows = self.dashboard.scan_with_options(
+                    filter_name=filter_name,
+                    from_ep=from_ep,
+                    to_ep=to_ep,
+                    updated_after=updated_after,
+                    save_state=True,
+                )
                 print(self.dashboard.render_table(rows))
+
+                if export_csv_path and isinstance(export_csv_path, str) and export_csv_path.strip():
+                    try:
+                        ok = self.dashboard.export_csv(rows, export_csv_path)
+                        if ok:
+                            print(f"   CSV 已导出: {export_csv_path}")
+                        else:
+                            print(f"   CSV 导出失败")
+                    except Exception as e:
+                        try:
+                            print(f"   CSV 导出失败: {e}")
+                        except Exception:
+                            pass
+
+                if export_md_path and isinstance(export_md_path, str) and export_md_path.strip():
+                    try:
+                        ok = self.dashboard.export_markdown(rows, export_md_path)
+                        if ok:
+                            print(f"   Markdown 已导出: {export_md_path}")
+                        else:
+                            print(f"   Markdown 导出失败")
+                    except Exception as e:
+                        try:
+                            print(f"   Markdown 导出失败: {e}")
+                        except Exception:
+                            pass
             except Exception as e:
                 try:
                     print(f"   看板扫描失败: {e}")
@@ -990,6 +1068,7 @@ class PodcastToolCLI:
         parser.add_argument("--watch", "-w", action="store_true", help="启动文件夹监听")
         parser.add_argument("--scan", "-s", action="store_true", help="扫描输入目录")
         parser.add_argument("--release", "-r", action="store_true", help="自动生成发布包")
+        parser.add_argument("--review", "-v", action="store_true", help="发布前复核（只预览不写入）")
         parser.add_argument("--dashboard", "-d", action="store_true", help="显示期数看板")
         parser.add_argument(
             "--filter",
@@ -997,6 +1076,18 @@ class PodcastToolCLI:
             default=FILTER_ALL,
             choices=sorted(VALID_FILTERS),
             help=f"看板筛选条件 (默认: {FILTER_ALL})",
+        )
+        parser.add_argument("--from", dest="from_ep", default=None, help="看板按期号范围：起始期号 (含)")
+        parser.add_argument("--to", dest="to_ep", default=None, help="看板按期号范围：结束期号 (含)")
+        parser.add_argument("--updated-after", dest="updated_after", default=None, help="只显示更新时间不早于该值的期数（ISO 格式，如 2026-06-01）")
+        parser.add_argument("--export-csv", dest="export_csv", default=None, help="将看板结果导出为 CSV 文件")
+        parser.add_argument("--export-md", dest="export_md", default=None, help="将看板结果导出为 Markdown 文件")
+        parser.add_argument(
+            "--conflict-policy",
+            dest="conflict_policy",
+            default="preserve",
+            choices=["preserve", "overwrite", "keep_both"],
+            help="检测到用户手改文案时的处理策略: preserve=保留(默认) / overwrite=覆盖 / keep_both=另存新版本",
         )
         parser.add_argument("--config", "-c", help="配置文件路径")
 
@@ -1033,7 +1124,41 @@ class PodcastToolCLI:
                         flt = args.filter
                 except Exception:
                     flt = FILTER_ALL
-                self.show_dashboard(flt)
+                self.show_dashboard(
+                    flt,
+                    from_ep=getattr(args, "from_ep", None),
+                    to_ep=getattr(args, "to_ep", None),
+                    updated_after=getattr(args, "updated_after", None),
+                    export_csv_path=getattr(args, "export_csv", None),
+                    export_md_path=getattr(args, "export_md", None),
+                )
+                return
+        except Exception:
+            pass
+
+        try:
+            if args.review and args.directory:
+                if self.processor is None:
+                    try:
+                        print("   处理器未初始化")
+                    except Exception:
+                        pass
+                    return
+                cp = getattr(args, "conflict_policy", "preserve")
+                if cp not in ("preserve", "overwrite", "keep_both"):
+                    cp = "preserve"
+                result, review_text, errors = self.processor.preview_release(args.directory, conflict_policy=cp)
+                try:
+                    print(review_text)
+                except Exception:
+                    pass
+                if isinstance(errors, list) and errors:
+                    try:
+                        print(" 错误:")
+                        for e in errors:
+                            print(f"   X {e}")
+                    except Exception:
+                        pass
                 return
         except Exception:
             pass
@@ -1043,7 +1168,10 @@ class PodcastToolCLI:
                 result = self.process_directory(args.directory)
                 try:
                     if args.release and result is not None and getattr(result, "is_valid", False):
-                        self.interactive_release(result)
+                        cp = getattr(args, "conflict_policy", "preserve")
+                        if cp not in ("preserve", "overwrite", "keep_both"):
+                            cp = "preserve"
+                        self.interactive_release(result, conflict_policy=cp)
                 except Exception:
                     pass
                 return
@@ -1131,7 +1259,7 @@ class PodcastToolCLI:
 
                 elif choice == "5":
                     if self.current_result is not None:
-                        self.interactive_release(self.current_result)
+                        self.interactive_release(self.current_result, conflict_policy=self._conflict_policy)
                     else:
                         try:
                             print("\n  暂无结果，请先扫描目录")
@@ -1149,6 +1277,88 @@ class PodcastToolCLI:
 
                 elif choice == "9":
                     self.show_dashboard(FILTER_HAS_ISSUES)
+
+                elif choice == "10":
+                    try:
+                        d = safe_input("  请输入要复核的目录: ").strip()
+                        if d and os.path.exists(d) and os.path.isdir(d):
+                            if self.processor is not None:
+                                result, review_text, errors = self.processor.preview_release(
+                                    d, conflict_policy=self._conflict_policy
+                                )
+                                try:
+                                    print(review_text)
+                                except Exception:
+                                    pass
+                                try:
+                                    if isinstance(errors, list) and errors:
+                                        print("  错误:")
+                                        for e in errors:
+                                            print(f"    X {e}")
+                                except Exception:
+                                    pass
+                                if result is not None and getattr(result, "is_valid", False):
+                                    cont = safe_input("  确认无误？是否继续生成发布包？(y/N): ").strip().lower()
+                                    if cont == "y":
+                                        self.current_result = result
+                                        self.interactive_release(result, conflict_policy=self._conflict_policy)
+                            else:
+                                print("   处理器未初始化")
+                        else:
+                            print("   目录无效或不存在")
+                    except Exception as e:
+                        try:
+                            print(f"   复核失败: {e}")
+                        except Exception:
+                            pass
+
+                elif choice == "11":
+                    try:
+                        out = safe_input("  请输入 CSV 导出路径 (留空则 output/episodes.csv): ").strip()
+                        if not out:
+                            out = os.path.join(str(getattr(self.config, "output_dir", "./output") or "./output"), "episodes.csv")
+                        flt = safe_input("  筛选条件 (all/ready/pending/issues/released/not_released/archived/error，回车=all): ").strip() or FILTER_ALL
+                        if flt not in VALID_FILTERS:
+                            flt = FILTER_ALL
+                        self.show_dashboard(flt, export_csv_path=out)
+                    except Exception as e:
+                        try:
+                            print(f"   CSV 导出失败: {e}")
+                        except Exception:
+                            pass
+
+                elif choice == "12":
+                    try:
+                        out = safe_input("  请输入 Markdown 导出路径 (留空则 output/episodes.md): ").strip()
+                        if not out:
+                            out = os.path.join(str(getattr(self.config, "output_dir", "./output") or "./output"), "episodes.md")
+                        flt = safe_input("  筛选条件 (all/ready/pending/issues/released/not_released/archived/error，回车=all): ").strip() or FILTER_ALL
+                        if flt not in VALID_FILTERS:
+                            flt = FILTER_ALL
+                        self.show_dashboard(flt, export_md_path=out)
+                    except Exception as e:
+                        try:
+                            print(f"   Markdown 导出失败: {e}")
+                        except Exception:
+                            pass
+
+                elif choice == "13":
+                    try:
+                        print("\n  文案冲突处理策略:")
+                        print("    1) preserve  - 保留用户手改（默认，不覆盖）")
+                        print("    2) overwrite - 强制覆盖用户手改")
+                        print("    3) keep_both - 新旧版本都保留（旧版另存为 _v1/_v2）")
+                        p = safe_input("  请选择 [1-3，回车=preserve]: ").strip()
+                        mapping = {"1": "preserve", "2": "overwrite", "3": "keep_both",
+                                   "preserve": "preserve", "overwrite": "overwrite", "keep_both": "keep_both"}
+                        chosen = mapping.get(p, "preserve")
+                        self._conflict_policy = chosen
+                        print(f"   已设置冲突策略: {chosen}")
+                    except Exception as e:
+                        try:
+                            print(f"   设置失败: {e}")
+                        except Exception:
+                            pass
 
                 else:
                     try:

@@ -83,6 +83,13 @@ class EpisodeDashboardRow:
         self.warnings: List[str] = []
         self.errors: List[str] = []
 
+        self.created_at: str = ""
+        self.updated_at: str = ""
+        self.last_processed_at: str = ""
+        self.last_released_at: str = ""
+        self.last_archived_at: str = ""
+        self.user_edited_files: List[str] = []
+
     def to_dict(self) -> Dict[str, Any]:
         try:
             return {
@@ -106,6 +113,12 @@ class EpisodeDashboardRow:
                 "generated_files_count": int(self.generated_files_count),
                 "warnings": list(self.warnings),
                 "errors": list(self.errors),
+                "created_at": str(self.created_at or ""),
+                "updated_at": str(self.updated_at or ""),
+                "last_processed_at": str(self.last_processed_at or ""),
+                "last_released_at": str(self.last_released_at or ""),
+                "last_archived_at": str(self.last_archived_at or ""),
+                "user_edited_files": list(self.user_edited_files),
             }
         except Exception:
             return {"episode_number": "", "status": "error"}
@@ -355,6 +368,13 @@ class EpisodeDashboard:
                     row.has_user_edits = bool(state.custom_user_edits)
                     row.title = str(state.title) if state.title else row.title
                     row.output_dir = str(state.output_dir) if state.output_dir else ""
+                    row.created_at = str(state.created_at or "")
+                    row.updated_at = str(state.updated_at or "")
+                    row.last_processed_at = str(state.last_processed_at or "")
+                    row.last_released_at = str(state.last_released_at or "")
+                    row.last_archived_at = str(state.last_archived_at or "")
+                    if isinstance(state.user_edited_files, list):
+                        row.user_edited_files = [str(x) for x in state.user_edited_files if isinstance(x, str)]
                     if isinstance(state.generated_files, list):
                         row.generated_files_count = len(state.generated_files)
                     if isinstance(state.errors, list) and state.errors:
@@ -481,6 +501,16 @@ class EpisodeDashboard:
             lines: List[str] = []
             lines.append("")
             lines.append("期数看板")
+            try:
+                scan_dir = str(self.input_dir or "")
+                if scan_dir:
+                    try:
+                        scan_dir_abs = os.path.abspath(scan_dir)
+                        lines.append(f"  扫描目录: {scan_dir_abs}")
+                    except Exception:
+                        lines.append(f"  扫描目录: {scan_dir}")
+            except Exception:
+                pass
             lines.append("")
 
             if not rows:
@@ -609,3 +639,287 @@ class EpisodeDashboard:
             return "\n".join(lines)
         except Exception:
             return "\n详情渲染失败\n"
+
+    def _in_episode_range(self, episode_number: str, from_ep: Optional[str], to_ep: Optional[str]) -> bool:
+        try:
+            ep = str(episode_number or "")
+            if from_ep and ep and ep < str(from_ep):
+                return False
+            if to_ep and ep and ep > str(to_ep):
+                return False
+            return True
+        except Exception:
+            return True
+
+    def _updated_after(self, row: EpisodeDashboardRow, updated_after: Optional[str]) -> bool:
+        try:
+            if not updated_after:
+                return True
+            target = str(row.updated_at or row.last_processed_at or "")
+            if not target:
+                return False
+            return target >= str(updated_after)
+        except Exception:
+            return True
+
+    def scan_with_options(
+        self,
+        filter_name: str = FILTER_ALL,
+        from_ep: Optional[str] = None,
+        to_ep: Optional[str] = None,
+        updated_after: Optional[str] = None,
+        rescan: bool = False,
+        save_state: bool = True,
+    ) -> List[EpisodeDashboardRow]:
+        rows: List[EpisodeDashboardRow] = []
+        try:
+            episode_dirs = self._find_episode_directories()
+        except Exception:
+            episode_dirs = []
+
+        for d in episode_dirs:
+            try:
+                row = self._scan_directory(d, rescan=rescan)
+                if not self._matches_filter(row, filter_name):
+                    if save_state and row.episode_number and row.episode_number != "未知":
+                        try:
+                            state = self.state_manager.get_or_create(row.episode_number, d)
+                            try:
+                                state.directory = str(d) if d else state.directory
+                            except Exception:
+                                pass
+                            try:
+                                state.missing_files = list(row.missing_files)
+                            except Exception:
+                                pass
+                            try:
+                                state.touch()
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                    continue
+                if not self._in_episode_range(row.episode_number, from_ep, to_ep):
+                    if save_state and row.episode_number and row.episode_number != "未知":
+                        try:
+                            state = self.state_manager.get_or_create(row.episode_number, d)
+                            state.touch()
+                        except Exception:
+                            pass
+                    continue
+                if not self._updated_after(row, updated_after):
+                    if save_state and row.episode_number and row.episode_number != "未知":
+                        try:
+                            state = self.state_manager.get_or_create(row.episode_number, d)
+                            state.touch()
+                        except Exception:
+                            pass
+                    continue
+                rows.append(row)
+
+                if save_state and row.episode_number and row.episode_number != "未知":
+                    try:
+                        state = self.state_manager.get_or_create(row.episode_number, d)
+                        try:
+                            state.directory = str(d) if d else state.directory
+                        except Exception:
+                            pass
+                        try:
+                            state.missing_files = list(row.missing_files)
+                        except Exception:
+                            pass
+                        try:
+                            state.naming_issues = list(row.naming_issues)
+                        except Exception:
+                            pass
+                        try:
+                            state.is_valid = bool(row.is_valid)
+                        except Exception:
+                            pass
+                        try:
+                            state.status = str(row.status)
+                        except Exception:
+                            pass
+                        try:
+                            state.touch()
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+            except Exception:
+                continue
+
+        try:
+            if save_state:
+                self.state_manager.save()
+        except Exception:
+            pass
+
+        try:
+            rows.sort(key=lambda r: (r.episode_number or "", r.directory or ""))
+        except Exception:
+            pass
+
+        return rows
+
+    def export_csv(self, rows: List[EpisodeDashboardRow], output_path: str) -> bool:
+        try:
+            import csv
+            if not output_path:
+                return False
+            out_dir = os.path.dirname(output_path)
+            if out_dir:
+                try:
+                    ensure_directory(out_dir)
+                except Exception:
+                    pass
+            with open(output_path, "w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "期号", "状态", "标题", "音频时长", "封面尺寸",
+                    "缺失文件", "命名问题", "敏感词数量",
+                    "已发布", "已归档", "有用户手改", "用户手改文件",
+                    "生成文件数", "最后处理时间", "最后发布时间", "最后归档时间",
+                    "更新时间", "输出目录",
+                ])
+                for row in rows:
+                    try:
+                        missing = ";".join([FILE_TYPE_LABELS.get(str(m), str(m)) for m in row.missing_files if m])
+                        naming = ";".join([str(x) for x in row.naming_issues if x])
+                        sw_count = len(row.sensitive_words_found) if isinstance(row.sensitive_words_found, list) else 0
+                        user_edited = ";".join([str(x) for x in row.user_edited_files if x])
+                        writer.writerow([
+                            str(row.episode_number or ""),
+                            str(row.status_label or row.status or ""),
+                            str(row.title or ""),
+                            str(row.audio_duration_formatted or ""),
+                            str(row.cover_size or ""),
+                            missing,
+                            naming,
+                            int(sw_count),
+                            "是" if row.is_released else "否",
+                            "是" if row.is_archived else "否",
+                            "是" if row.has_user_edits else "否",
+                            user_edited,
+                            int(row.generated_files_count or 0),
+                            str(row.last_processed_at or ""),
+                            str(row.last_released_at or ""),
+                            str(row.last_archived_at or ""),
+                            str(row.updated_at or ""),
+                            str(row.output_dir or ""),
+                        ])
+                    except Exception:
+                        continue
+            return True
+        except Exception:
+            return False
+
+    def export_markdown(self, rows: List[EpisodeDashboardRow], output_path: str, title: str = "播客期数看板") -> bool:
+        try:
+            if not output_path:
+                return False
+            out_dir = os.path.dirname(output_path)
+            if out_dir:
+                try:
+                    ensure_directory(out_dir)
+                except Exception:
+                    pass
+            lines: List[str] = []
+            from datetime import datetime
+            try:
+                lines.append(f"# {title}")
+                lines.append("")
+                lines.append(f"_生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_")
+                try:
+                    scan_dir = os.path.abspath(self.input_dir) if self.input_dir else ""
+                    if scan_dir:
+                        lines.append(f"_扫描目录: {scan_dir}_")
+                except Exception:
+                    pass
+                lines.append("")
+                lines.append(f"共 **{len(rows)}** 期")
+                lines.append("")
+            except Exception:
+                pass
+
+            try:
+                ready = sum(1 for r in rows if r.status == EPISODE_STATUS_READY)
+                pending = sum(1 for r in rows if r.status == EPISODE_STATUS_PENDING)
+                released = sum(1 for r in rows if r.is_released)
+                archived = sum(1 for r in rows if r.is_archived)
+                errors = sum(1 for r in rows if r.status == EPISODE_STATUS_ERROR)
+                issues = sum(1 for r in rows if r.has_issues)
+                lines.append(f"- 就绪: **{ready}**")
+                lines.append(f"- 待处理: **{pending}**")
+                lines.append(f"- 有问题: **{issues}**")
+                lines.append(f"- 已发布: **{released}**")
+                lines.append(f"- 已归档: **{archived}**")
+                lines.append(f"- 错误: **{errors}**")
+                lines.append("")
+            except Exception:
+                pass
+
+            lines.append("| 期号 | 状态 | 标题 | 音频时长 | 封面尺寸 | 缺失文件 | 已发布 | 有用户手改 | 最后处理时间 | 输出目录 |")
+            lines.append("| ---- | ---- | ---- | -------- | -------- | -------- | ------ | ---------- | ------------ | -------- |")
+
+            for row in rows:
+                try:
+                    ep = str(row.episode_number or "")
+                    st = str(row.status_label or row.status or "")
+                    tl = str(row.title or "").replace("|", "&#124;")
+                    ad = str(row.audio_duration_formatted or "-")
+                    cs = str(row.cover_size or "-")
+                    missing_parts = [FILE_TYPE_LABELS.get(str(m), str(m)) for m in row.missing_files if m]
+                    missing = ", ".join(missing_parts) if missing_parts else "-"
+                    rel = "是" if row.is_released else "否"
+                    if row.is_archived:
+                        rel = "已归档"
+                    ue = "是" if row.has_user_edits else "否"
+                    lp = str(row.last_processed_at or "-")
+                    od = str(row.output_dir or "")
+                    lines.append(f"| {ep} | {st} | {tl} | {ad} | {cs} | {missing} | {rel} | {ue} | {lp} | {od} |")
+                except Exception:
+                    continue
+
+            lines.append("")
+            lines.append("## 每期详情")
+            lines.append("")
+            for row in rows:
+                try:
+                    ep = str(row.episode_number or "?")
+                    tl = str(row.title or "(未命名)")
+                    lines.append(f"### 第 {ep} 期 - {tl}")
+                    lines.append("")
+                    lines.append(f"- 状态: {str(row.status_label or row.status or '')}")
+                    lines.append(f"- 校验通过: {'是' if row.is_valid else '否'}")
+                    lines.append(f"- 已发布: {'是' if row.is_released else '否'}")
+                    lines.append(f"- 已归档: {'是' if row.is_archived else '否'}")
+                    if row.has_user_edits:
+                        uef = ", ".join([str(x) for x in row.user_edited_files if x])
+                        lines.append(f"- 有用户手改: {'是' + ('（' + uef + '）' if uef else '')}")
+                    if row.audio_duration_formatted and row.audio_duration_formatted != "-":
+                        lines.append(f"- 音频时长: {row.audio_duration_formatted}")
+                    if row.cover_size and row.cover_size != "-":
+                        lines.append(f"- 封面尺寸: {row.cover_size}")
+                    if row.missing_files:
+                        ml = ", ".join([FILE_TYPE_LABELS.get(str(m), str(m)) for m in row.missing_files if m])
+                        lines.append(f"- 缺失文件: {ml}")
+                    if row.naming_issues:
+                        lines.append(f"- 命名问题: {'; '.join([str(x) for x in row.naming_issues if x])}")
+                    if isinstance(row.sensitive_words_found, list) and row.sensitive_words_found:
+                        lines.append(f"- 敏感词: {len(row.sensitive_words_found)} 处")
+                    if row.last_processed_at:
+                        lines.append(f"- 最后处理时间: {row.last_processed_at}")
+                    if row.last_released_at:
+                        lines.append(f"- 最后发布时间: {row.last_released_at}")
+                    if row.output_dir:
+                        lines.append(f"- 输出目录: {row.output_dir}")
+                    lines.append("")
+                except Exception:
+                    continue
+
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+            return True
+        except Exception:
+            return False

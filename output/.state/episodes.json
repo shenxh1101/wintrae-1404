@@ -1,16 +1,16 @@
 {
   "version": 1,
-  "saved_at": "2026-06-22T02:31:06.770790",
+  "saved_at": "2026-06-22T02:53:30.012253",
   "episodes": {
     "001": {
       "episode_number": "001",
       "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
-      "status": "archived",
-      "created_at": "2026-06-22T02:31:06.295826",
-      "updated_at": "2026-06-22T02:31:06.770790",
-      "last_processed_at": "2026-06-22T02:31:06.348015",
-      "last_released_at": "2026-06-22T02:31:06.349015",
-      "last_archived_at": "2026-06-22T02:31:06.385412",
+      "status": "ready",
+      "created_at": "2026-06-22T02:51:54.500183",
+      "updated_at": "2026-06-22T02:53:30.012253",
+      "last_processed_at": "2026-06-22T02:52:49.294746",
+      "last_released_at": null,
+      "last_archived_at": null,
       "missing_files": [],
       "naming_issues": [],
       "sensitive_words_found": [],
@@ -20,10 +20,10 @@
       "cover_height": 1400,
       "cover_format": "JPEG",
       "files": {
-        "audio": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_AI产品的未来.mp3",
-        "cover": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_cover.jpg",
-        "guest": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_嘉宾资料.md",
-        "summary": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_节目摘要.md"
+        "audio": "input\\001_AI产品的未来\\001_AI产品的未来.mp3",
+        "cover": "input\\001_AI产品的未来\\001_cover.jpg",
+        "guest": "input\\001_AI产品的未来\\001_嘉宾资料.md",
+        "summary": "input\\001_AI产品的未来\\001_节目摘要.md"
       },
       "title": "AI产品的未来：从工具到伙伴",
       "title_candidates": [
@@ -35,20 +35,9 @@
       ],
       "output_dir": "D:\\TraeProjects\\1404\\output\\001",
       "archive_dir": "D:\\TraeProjects\\1404\\archive\\001",
-      "generated_files": [
-        "D:\\TraeProjects\\1404\\output\\001\\001_AI产品的未来：从工具到伙伴.mp3",
-        "D:\\TraeProjects\\1404\\output\\001\\001_AI产品的未来：从工具到伙伴_cover.jpg",
-        "D:\\TraeProjects\\1404\\output\\001\\001_AI产品的未来：从工具到伙伴_嘉宾资料.md",
-        "D:\\TraeProjects\\1404\\output\\001\\001_AI产品的未来：从工具到伙伴_节目简介.md",
-        "D:\\TraeProjects\\1404\\output\\001\\001_shownotes.md",
-        "D:\\TraeProjects\\1404\\output\\001\\001_嘉宾介绍.md",
-        "D:\\TraeProjects\\1404\\output\\001\\001_weibo.txt",
-        "D:\\TraeProjects\\1404\\output\\001\\001_xiaohongshu.txt",
-        "D:\\TraeProjects\\1404\\output\\001\\001_wechat.txt",
-        "D:\\TraeProjects\\1404\\output\\001\\001_twitter.txt",
-        "D:\\TraeProjects\\1404\\output\\001\\001_待办清单.md",
-        "D:\\TraeProjects\\1404\\output\\001\\001_发布清单.md"
-      ],
+      "generated_files": [],
+      "file_hashes": {},
+      "user_edited_files": [],
       "warnings": [],
       "errors": [],
       "checklist": [
@@ -82,13 +71,13 @@
         ],
         [
           "文件已批量重命名",
-          true
+          false
         ]
       ],
       "is_valid": true,
-      "is_released": true,
-      "is_archived": true,
-      "custom_user_edits": true,
+      "is_released": false,
+      "is_archived": false,
+      "custom_user_edits": false,
       "release_notes": "",
       "metadata": {}
     }

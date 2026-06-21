@@ -292,7 +292,8 @@ class EpisodeProcessor:
         return result
 
     def confirm_and_release(
-        self, result: EpisodeProcessResult, title: Optional[str] = None
+        self, result: EpisodeProcessResult, title: Optional[str] = None,
+        conflict_policy: str = "preserve",
     ) -> Tuple[Optional[ReleasePackage], list]:
         errors: list = []
 
@@ -324,28 +325,24 @@ class EpisodeProcessor:
             except Exception as e:
                 errors.append(f"重命名执行失败: {e}")
 
-            skip_doc_generation = False
+            user_edited_files: list = []
             try:
                 if self.state_manager is not None and result.episode_number and result.episode_number != "未知":
-                    if self.state_manager.has_user_edited_files(result.episode_number, result.directory):
-                        skip_doc_generation = True
+                    user_edited_files = list(self.state_manager.scan_user_edited_files(
+                        result.episode_number, result.directory
+                    ))
             except Exception:
-                skip_doc_generation = False
+                user_edited_files = []
 
-            if result.generated_content is not None and not skip_doc_generation:
+            if result.generated_content is not None:
                 try:
                     self.release_manager.generate_release_documents(
-                        result.release_package, result.generated_content
+                        result.release_package, result.generated_content,
+                        conflict_policy=conflict_policy,
+                        user_edited_filenames=user_edited_files,
                     )
                 except Exception as e:
                     errors.append(f"发布文档生成失败: {e}")
-            elif skip_doc_generation:
-                try:
-                    result.release_package.warnings = getattr(result.release_package, "warnings", [])
-                    if isinstance(result.release_package.warnings, list):
-                        result.release_package.warnings.append("检测到用户手动编辑，已跳过文案覆盖")
-                except Exception:
-                    pass
 
             try:
                 if self.state_manager is not None:
@@ -389,3 +386,187 @@ class EpisodeProcessor:
             return success
         except Exception:
             return False
+
+    def render_release_review(self, result: EpisodeProcessResult, conflict_policy: str = "preserve") -> str:
+        lines: list = []
+        try:
+            lines.append("")
+            lines.append("=" * 60)
+            lines.append(" 发布前复核")
+            lines.append("=" * 60)
+            try:
+                ep = str(result.episode_number or "未知")
+                title = ""
+                try:
+                    if result.release_package is not None:
+                        title = str(getattr(result.release_package, "title", "") or "")
+                except Exception:
+                    title = ""
+                lines.append(f" 期号: {ep}")
+                lines.append(f" 标题: {title if title else '(未命名)'}")
+                try:
+                    if result.generated_content is not None:
+                        tc = getattr(result.generated_content, "title_candidates", None)
+                        if isinstance(tc, list) and tc:
+                            lines.append(f" 备选标题 ({len(tc)}):")
+                            for i, t in enumerate(tc, 1):
+                                try:
+                                    lines.append(f"   {i}. {str(t)}")
+                                except Exception:
+                                    continue
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            lines.append("")
+
+            try:
+                if result.validation is not None:
+                    vr = result.validation
+                    mf = getattr(vr, "missing_files", None)
+                    if isinstance(mf, list) and mf:
+                        from .validator import FILE_TYPE_LABELS
+                        labels = [FILE_TYPE_LABELS.get(str(m), str(m)) for m in mf if m]
+                        lines.append(f" ⚠ 缺失文件: {', '.join(labels)}")
+                    ni = getattr(vr, "naming_issues", None)
+                    if isinstance(ni, list) and ni:
+                        lines.append(f" ⚠ 命名问题 ({len(ni)}):")
+                        for n in ni:
+                            lines.append(f"    - {str(n)}")
+                    sw = getattr(vr, "sensitive_words_found", None)
+                    if isinstance(sw, list) and sw:
+                        lines.append(f" ⚠ 敏感词 ({len(sw)} 处):")
+                        for item in sw:
+                            try:
+                                if isinstance(item, (list, tuple)) and len(item) >= 3:
+                                    lines.append(f"    - [{str(item[0])}] '{str(item[1])}': {str(item[2])[:60]}")
+                            except Exception:
+                                continue
+                    w = getattr(vr, "warnings", None)
+                    if isinstance(w, list) and w:
+                        lines.append(f" ⚠ 校验警告 ({len(w)}):")
+                        for x in w:
+                            lines.append(f"    ! {str(x)}")
+                    valid = getattr(vr, "is_valid", False)
+                    lines.append(f" 校验结果: {'通过' if valid else '未通过'}")
+            except Exception:
+                pass
+            lines.append("")
+
+            try:
+                if result.audio_info is not None:
+                    ai = result.audio_info
+                    from .utils import format_duration
+                    dur = getattr(ai, "duration_seconds", None)
+                    fmt = getattr(ai, "format", "")
+                    sr = getattr(ai, "sample_rate", None)
+                    ch = getattr(ai, "channels", None)
+                    bits = getattr(ai, "bit_depth", None)
+                    parts = []
+                    if dur is not None:
+                        parts.append(f"时长 {format_duration(dur)}")
+                    if fmt:
+                        parts.append(f"格式 {fmt}")
+                    if sr:
+                        parts.append(f"采样率 {sr}Hz")
+                    if ch:
+                        parts.append(f"声道 {ch}")
+                    if bits:
+                        parts.append(f"位深 {bits}bit")
+                    lines.append(f" 音频: {' / '.join(parts) if parts else '未检测到'}")
+            except Exception:
+                pass
+
+            try:
+                if result.cover_info is not None:
+                    ci = result.cover_info
+                    w = getattr(ci, "width", None)
+                    h = getattr(ci, "height", None)
+                    fmt = getattr(ci, "format", "")
+                    parts = []
+                    if w is not None and h is not None:
+                        parts.append(f"{int(w)}x{int(h)}")
+                    if fmt:
+                        parts.append(f"格式 {fmt}")
+                    sq = getattr(ci, "is_square", None)
+                    if sq is not None:
+                        parts.append(f"正方形 {'是' if sq else '否'}")
+                    lines.append(f" 封面: {' / '.join(parts) if parts else '未检测到'}")
+            except Exception:
+                pass
+            lines.append("")
+
+            try:
+                if result.release_package is not None and hasattr(result.release_package, "checklist"):
+                    cl = result.release_package.checklist
+                    if isinstance(cl, list) and cl:
+                        lines.append(f" 待办/检查清单:")
+                        ok = 0
+                        for item in cl:
+                            try:
+                                if isinstance(item, (list, tuple)) and len(item) >= 2:
+                                    checked = bool(item[1])
+                                    if checked:
+                                        ok += 1
+                                    mark = "[x]" if checked else "[ ]"
+                                    lines.append(f"    {mark} {str(item[0])}")
+                            except Exception:
+                                continue
+                        lines.append(f" 完成度: {ok}/{len(cl)}")
+            except Exception:
+                pass
+
+            try:
+                if self.state_manager is not None and result.episode_number and result.episode_number != "未知":
+                    conflicts = self.state_manager.detect_conflicts(result.episode_number, result.directory)
+                    if conflicts:
+                        policy_label = {"preserve": "保留（不覆盖）", "overwrite": "强制覆盖", "keep_both": "另存新旧版本"}.get(conflict_policy, conflict_policy)
+                        lines.append("")
+                        lines.append(f" 文案变更（冲突处理策略: {policy_label}）:")
+                        for c in conflicts:
+                            try:
+                                fn = str(c.get("filename", "?"))
+                                action = str(c.get("reason", "检测到用户手改"))
+                                backup = c.get("backup_file")
+                                suffix = f"（备份: {os.path.basename(str(backup))}）" if backup else ""
+                                lines.append(f"    ! {fn}: {action}{suffix}")
+                            except Exception:
+                                continue
+            except Exception:
+                pass
+
+            try:
+                if isinstance(result.errors, list) and result.errors:
+                    lines.append("")
+                    lines.append(f" 错误 ({len(result.errors)}):")
+                    for e in result.errors:
+                        lines.append(f"    X {str(e)}")
+            except Exception:
+                pass
+
+            lines.append("")
+            lines.append(" 请确认后再执行真正写入 output。")
+            lines.append("=" * 60)
+            lines.append("")
+        except Exception:
+            try:
+                lines.append(" 复核视图渲染失败")
+            except Exception:
+                pass
+        return "\n".join(lines)
+
+    def preview_release(self, directory: str, conflict_policy: str = "preserve") -> Tuple[Optional[EpisodeProcessResult], str, list]:
+        errors: list = []
+        try:
+            result = self.process_episode(directory)
+            if result is None:
+                errors.append("处理结果为空")
+                return None, "预览失败: 处理结果为空\n", errors
+            review = self.render_release_review(result, conflict_policy=conflict_policy)
+            return result, review, errors
+        except Exception as e:
+            try:
+                errors.append(f"预览失败: {e}")
+            except Exception:
+                pass
+            return None, f"预览失败: {e}\n", errors
