@@ -2,6 +2,7 @@
 import os
 from typing import List, Optional, Dict, Any
 from pathlib import Path
+from datetime import datetime
 
 from .config import Config
 from .validator import MaterialValidator, ValidationResult
@@ -15,6 +16,8 @@ from .state_manager import (
     EPISODE_STATUS_RELEASED,
     EPISODE_STATUS_ARCHIVED,
     EPISODE_STATUS_ERROR,
+    EPISODE_STATUS_DRAFT,
+    EPISODE_STATUS_PENDING_REVIEW,
 )
 from .utils import format_duration, ensure_directory, is_path_safe
 
@@ -37,6 +40,8 @@ VALID_FILTERS = {
     FILTER_NOT_RELEASED,
     FILTER_ARCHIVED,
     FILTER_ERROR,
+    "draft",
+    "pending_review",
 }
 
 FILE_TYPE_LABELS = {
@@ -49,6 +54,8 @@ FILE_TYPE_LABELS = {
 STATUS_LABELS = {
     EPISODE_STATUS_PENDING: "待处理",
     EPISODE_STATUS_READY: "就绪",
+    EPISODE_STATUS_DRAFT: "草稿",
+    EPISODE_STATUS_PENDING_REVIEW: "待复核",
     EPISODE_STATUS_RELEASED: "已发布",
     EPISODE_STATUS_ARCHIVED: "已归档",
     EPISODE_STATUS_ERROR: "错误",
@@ -65,6 +72,8 @@ class EpisodeDashboardRow:
         self.is_valid: bool = False
         self.is_released: bool = False
         self.is_archived: bool = False
+        self.is_draft: bool = False
+        self.is_pending_review: bool = False
         self.has_user_edits: bool = False
 
         self.missing_files: List[str] = []
@@ -88,6 +97,9 @@ class EpisodeDashboardRow:
         self.last_processed_at: str = ""
         self.last_released_at: str = ""
         self.last_archived_at: str = ""
+        self.last_reviewed_at: str = ""
+        self.last_scanned_at: str = ""
+        self.input_dir_mtime: str = ""
         self.user_edited_files: List[str] = []
 
     def to_dict(self) -> Dict[str, Any]:
@@ -100,6 +112,8 @@ class EpisodeDashboardRow:
                 "is_valid": bool(self.is_valid),
                 "is_released": bool(self.is_released),
                 "is_archived": bool(self.is_archived),
+                "is_draft": bool(self.is_draft),
+                "is_pending_review": bool(self.is_pending_review),
                 "has_user_edits": bool(self.has_user_edits),
                 "missing_files": list(self.missing_files),
                 "naming_issues": list(self.naming_issues),
@@ -118,6 +132,9 @@ class EpisodeDashboardRow:
                 "last_processed_at": str(self.last_processed_at or ""),
                 "last_released_at": str(self.last_released_at or ""),
                 "last_archived_at": str(self.last_archived_at or ""),
+                "last_reviewed_at": str(self.last_reviewed_at or ""),
+                "last_scanned_at": str(self.last_scanned_at or ""),
+                "input_dir_mtime": str(self.input_dir_mtime or ""),
                 "user_edited_files": list(self.user_edited_files),
             }
         except Exception:
@@ -153,9 +170,21 @@ class EpisodeDashboard:
             self.input_dir = "./input"
 
         try:
-            self.state_manager = state_manager or StateManager(self.config)
+            if state_manager is not None:
+                self.state_manager = state_manager
+            else:
+                self.state_manager = StateManager(self.config)
         except Exception:
-            self.state_manager = StateManager(self.config)
+            try:
+                if state_manager is not None:
+                    self.state_manager = state_manager
+                else:
+                    self.state_manager = StateManager(self.config)
+            except Exception:
+                try:
+                    self.state_manager = StateManager()
+                except Exception:
+                    pass
 
         try:
             self.validator = MaterialValidator(self.config)
@@ -275,6 +304,18 @@ class EpisodeDashboard:
         except Exception:
             pass
 
+        input_dir_mtime_str = ""
+        try:
+            if directory and isinstance(directory, str) and os.path.exists(directory):
+                m = os.path.getmtime(directory)
+                try:
+                    input_dir_mtime_str = datetime.fromtimestamp(m).isoformat()
+                    row.input_dir_mtime = input_dir_mtime_str
+                except Exception:
+                    input_dir_mtime_str = ""
+        except Exception:
+            input_dir_mtime_str = ""
+
         try:
             vr: Optional[ValidationResult] = None
             try:
@@ -365,6 +406,8 @@ class EpisodeDashboard:
                 try:
                     row.is_released = bool(state.is_released)
                     row.is_archived = bool(state.is_archived)
+                    row.is_draft = bool(state.is_draft)
+                    row.is_pending_review = bool(state.is_pending_review)
                     row.has_user_edits = bool(state.custom_user_edits)
                     row.title = str(state.title) if state.title else row.title
                     row.output_dir = str(state.output_dir) if state.output_dir else ""
@@ -373,6 +416,16 @@ class EpisodeDashboard:
                     row.last_processed_at = str(state.last_processed_at or "")
                     row.last_released_at = str(state.last_released_at or "")
                     row.last_archived_at = str(state.last_archived_at or "")
+                    row.last_reviewed_at = str(getattr(state, "last_reviewed_at", "") or "")
+                    row.last_scanned_at = str(state.last_scanned_at or "")
+                    try:
+                        md = getattr(state, "metadata", {})
+                        if isinstance(md, dict):
+                            idm = md.get("input_dir_mtime", "")
+                            if isinstance(idm, str) and idm and idm.strip():
+                                row.input_dir_mtime = idm
+                    except Exception:
+                        pass
                     if isinstance(state.user_edited_files, list):
                         row.user_edited_files = [str(x) for x in state.user_edited_files if isinstance(x, str)]
                     if isinstance(state.generated_files, list):
@@ -389,6 +442,10 @@ class EpisodeDashboard:
                     row.status = EPISODE_STATUS_ARCHIVED
                 elif row.is_released:
                     row.status = EPISODE_STATUS_RELEASED
+                elif row.is_pending_review:
+                    row.status = EPISODE_STATUS_PENDING_REVIEW
+                elif row.is_draft:
+                    row.status = EPISODE_STATUS_DRAFT
                 elif row.errors:
                     row.status = EPISODE_STATUS_ERROR
                 elif row.is_valid and not row.has_issues:
@@ -407,6 +464,18 @@ class EpisodeDashboard:
                 row.errors.append(f"扫描异常: {e}")
             except Exception:
                 pass
+
+        try:
+            if row.episode_number and row.episode_number != "未知":
+                try:
+                    self.state_manager.mark_scanned(
+                        row.episode_number, directory,
+                        source_dir_mtime=input_dir_mtime_str if input_dir_mtime_str else None,
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         return row
 
@@ -429,6 +498,10 @@ class EpisodeDashboard:
                 return row.is_archived
             if f == FILTER_ERROR:
                 return row.status == EPISODE_STATUS_ERROR
+            if f == "draft":
+                return bool(row.is_draft)
+            if f == "pending_review":
+                return bool(row.is_pending_review) or bool(row.is_draft)
             return True
         except Exception:
             return True
@@ -472,10 +545,6 @@ class EpisodeDashboard:
                             pass
                         try:
                             state.status = str(row.status)
-                        except Exception:
-                            pass
-                        try:
-                            state.touch()
                         except Exception:
                             pass
                     except Exception:
@@ -554,7 +623,12 @@ class EpisodeDashboard:
                 archived = sum(1 for r in rows if r.is_archived)
                 errors = sum(1 for r in rows if r.status == EPISODE_STATUS_ERROR)
                 issues = sum(1 for r in rows if r.has_issues)
-                lines.append(f"  就绪: {ready}  待处理: {pending}  有问题: {issues}  已发布: {released}  已归档: {archived}  错误: {errors}")
+                drafts = sum(1 for r in rows if r.is_draft)
+                pending_review = sum(1 for r in rows if r.is_pending_review)
+                lines.append(
+                    f"  就绪: {ready}  待处理: {pending}  草稿: {drafts}  待复核: {pending_review}"
+                    f"  有问题: {issues}  已发布: {released}  已归档: {archived}  错误: {errors}"
+                )
                 lines.append("")
             except Exception:
                 pass
@@ -655,10 +729,38 @@ class EpisodeDashboard:
         try:
             if not updated_after:
                 return True
-            target = str(row.updated_at or row.last_processed_at or "")
-            if not target:
+            try:
+                candidates: list = []
+                try:
+                    if row.input_dir_mtime and isinstance(row.input_dir_mtime, str):
+                        candidates.append(row.input_dir_mtime)
+                except Exception:
+                    pass
+                try:
+                    if row.last_processed_at and isinstance(row.last_processed_at, str):
+                        candidates.append(row.last_processed_at)
+                except Exception:
+                    pass
+                try:
+                    if row.last_released_at and isinstance(row.last_released_at, str):
+                        candidates.append(row.last_released_at)
+                except Exception:
+                    pass
+                try:
+                    if row.last_archived_at and isinstance(row.last_archived_at, str):
+                        candidates.append(row.last_archived_at)
+                except Exception:
+                    pass
+                try:
+                    if row.updated_at and isinstance(row.updated_at, str):
+                        candidates.append(row.updated_at)
+                except Exception:
+                    pass
+                if not candidates:
+                    return False
+                return max(candidates) >= str(updated_after)
+            except Exception:
                 return False
-            return target >= str(updated_after)
         except Exception:
             return True
 
@@ -692,28 +794,12 @@ class EpisodeDashboard:
                                 state.missing_files = list(row.missing_files)
                             except Exception:
                                 pass
-                            try:
-                                state.touch()
-                            except Exception:
-                                pass
                         except Exception:
                             pass
                     continue
                 if not self._in_episode_range(row.episode_number, from_ep, to_ep):
-                    if save_state and row.episode_number and row.episode_number != "未知":
-                        try:
-                            state = self.state_manager.get_or_create(row.episode_number, d)
-                            state.touch()
-                        except Exception:
-                            pass
                     continue
                 if not self._updated_after(row, updated_after):
-                    if save_state and row.episode_number and row.episode_number != "未知":
-                        try:
-                            state = self.state_manager.get_or_create(row.episode_number, d)
-                            state.touch()
-                        except Exception:
-                            pass
                     continue
                 rows.append(row)
 
@@ -738,10 +824,6 @@ class EpisodeDashboard:
                             pass
                         try:
                             state.status = str(row.status)
-                        except Exception:
-                            pass
-                        try:
-                            state.touch()
                         except Exception:
                             pass
                     except Exception:
@@ -776,11 +858,12 @@ class EpisodeDashboard:
             with open(output_path, "w", encoding="utf-8-sig", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([
-                    "期号", "状态", "标题", "音频时长", "封面尺寸",
+                    "期号", "状态", "子状态", "标题", "音频时长", "封面尺寸",
                     "缺失文件", "命名问题", "敏感词数量",
-                    "已发布", "已归档", "有用户手改", "用户手改文件",
-                    "生成文件数", "最后处理时间", "最后发布时间", "最后归档时间",
-                    "更新时间", "输出目录",
+                    "草稿", "待复核", "已发布", "已归档", "有用户手改", "用户手改文件",
+                    "生成文件数",
+                    "素材目录变动时间", "最后扫描时间", "最后生成时间", "最后复核时间", "最后发布时间", "最后归档时间", "更新时间",
+                    "输出目录",
                 ])
                 for row in rows:
                     try:
@@ -791,18 +874,24 @@ class EpisodeDashboard:
                         writer.writerow([
                             str(row.episode_number or ""),
                             str(row.status_label or row.status or ""),
+                            str(row.status or ""),
                             str(row.title or ""),
                             str(row.audio_duration_formatted or ""),
                             str(row.cover_size or ""),
                             missing,
                             naming,
                             int(sw_count),
+                            "是" if row.is_draft else "否",
+                            "是" if row.is_pending_review else "否",
                             "是" if row.is_released else "否",
                             "是" if row.is_archived else "否",
                             "是" if row.has_user_edits else "否",
                             user_edited,
                             int(row.generated_files_count or 0),
+                            str(row.input_dir_mtime or ""),
+                            str(row.last_scanned_at or ""),
                             str(row.last_processed_at or ""),
+                            str(getattr(row, "last_reviewed_at", "") or ""),
                             str(row.last_released_at or ""),
                             str(row.last_archived_at or ""),
                             str(row.updated_at or ""),
@@ -849,8 +938,12 @@ class EpisodeDashboard:
                 archived = sum(1 for r in rows if r.is_archived)
                 errors = sum(1 for r in rows if r.status == EPISODE_STATUS_ERROR)
                 issues = sum(1 for r in rows if r.has_issues)
+                drafts = sum(1 for r in rows if r.is_draft)
+                pending_review = sum(1 for r in rows if r.is_pending_review)
                 lines.append(f"- 就绪: **{ready}**")
                 lines.append(f"- 待处理: **{pending}**")
+                lines.append(f"- 草稿: **{drafts}**")
+                lines.append(f"- 待复核: **{pending_review}**")
                 lines.append(f"- 有问题: **{issues}**")
                 lines.append(f"- 已发布: **{released}**")
                 lines.append(f"- 已归档: **{archived}**")
@@ -859,8 +952,8 @@ class EpisodeDashboard:
             except Exception:
                 pass
 
-            lines.append("| 期号 | 状态 | 标题 | 音频时长 | 封面尺寸 | 缺失文件 | 已发布 | 有用户手改 | 最后处理时间 | 输出目录 |")
-            lines.append("| ---- | ---- | ---- | -------- | -------- | -------- | ------ | ---------- | ------------ | -------- |")
+            lines.append("| 期号 | 状态 | 标题 | 音频时长 | 封面尺寸 | 缺失文件 | 草稿 | 待复核 | 已发布 | 有用户手改 | 最后扫描时间 | 最后生成时间 | 输出目录 |")
+            lines.append("| ---- | ---- | ---- | -------- | -------- | -------- | ---- | ------ | ------ | ---------- | ------------ | ------------ | -------- |")
 
             for row in rows:
                 try:
@@ -871,13 +964,16 @@ class EpisodeDashboard:
                     cs = str(row.cover_size or "-")
                     missing_parts = [FILE_TYPE_LABELS.get(str(m), str(m)) for m in row.missing_files if m]
                     missing = ", ".join(missing_parts) if missing_parts else "-"
+                    dt = "是" if row.is_draft else "否"
+                    prv = "是" if row.is_pending_review else "否"
                     rel = "是" if row.is_released else "否"
                     if row.is_archived:
                         rel = "已归档"
                     ue = "是" if row.has_user_edits else "否"
+                    ls = str(row.last_scanned_at or "-")
                     lp = str(row.last_processed_at or "-")
                     od = str(row.output_dir or "")
-                    lines.append(f"| {ep} | {st} | {tl} | {ad} | {cs} | {missing} | {rel} | {ue} | {lp} | {od} |")
+                    lines.append(f"| {ep} | {st} | {tl} | {ad} | {cs} | {missing} | {dt} | {prv} | {rel} | {ue} | {ls} | {lp} | {od} |")
                 except Exception:
                     continue
 
@@ -892,6 +988,8 @@ class EpisodeDashboard:
                     lines.append("")
                     lines.append(f"- 状态: {str(row.status_label or row.status or '')}")
                     lines.append(f"- 校验通过: {'是' if row.is_valid else '否'}")
+                    lines.append(f"- 草稿: {'是' if row.is_draft else '否'}")
+                    lines.append(f"- 待复核: {'是' if row.is_pending_review else '否'}")
                     lines.append(f"- 已发布: {'是' if row.is_released else '否'}")
                     lines.append(f"- 已归档: {'是' if row.is_archived else '否'}")
                     if row.has_user_edits:
@@ -908,8 +1006,14 @@ class EpisodeDashboard:
                         lines.append(f"- 命名问题: {'; '.join([str(x) for x in row.naming_issues if x])}")
                     if isinstance(row.sensitive_words_found, list) and row.sensitive_words_found:
                         lines.append(f"- 敏感词: {len(row.sensitive_words_found)} 处")
+                    if row.input_dir_mtime:
+                        lines.append(f"- 素材目录变动时间: {row.input_dir_mtime}")
+                    if row.last_scanned_at:
+                        lines.append(f"- 最后扫描时间: {row.last_scanned_at}")
                     if row.last_processed_at:
-                        lines.append(f"- 最后处理时间: {row.last_processed_at}")
+                        lines.append(f"- 最后生成时间: {row.last_processed_at}")
+                    if row.last_reviewed_at:
+                        lines.append(f"- 最后复核时间: {row.last_reviewed_at}")
                     if row.last_released_at:
                         lines.append(f"- 最后发布时间: {row.last_released_at}")
                     if row.output_dir:

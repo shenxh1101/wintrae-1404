@@ -1,0 +1,225 @@
+{
+  "version": 1,
+  "saved_at": "2026-06-22T03:47:00.639747",
+  "records": [
+    {
+      "id": "46f40c14-99c3-4441-abd3-97bdc2b72f69",
+      "episode_number": "001",
+      "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
+      "reviewer": "草稿员",
+      "approved": true,
+      "final_title": "AI产品的未来：从工具到伙伴",
+      "title_candidates": [
+        "AI产品的未来：从工具到伙伴",
+        "深度对话：AI产品的未来：从工具到伙伴",
+        "AI产品的未来：从工具到伙伴的真相",
+        "聊聊AI产品的未来：从工具到伙伴这件事",
+        "为什么AI产品的未来：从工具到伙伴很重要"
+      ],
+      "sensitive_word_actions": [],
+      "conflict_policy": "preserve",
+      "conflict_summary": [],
+      "checklist_result": [],
+      "notes": "第1次草稿",
+      "custom_user_edits_acknowledged": false,
+      "created_at": "2026-06-22T03:46:57.381529"
+    },
+    {
+      "id": "dc7cde3e-8895-4800-a64e-4b970b9a1ac8",
+      "episode_number": "001",
+      "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
+      "reviewer": "草稿员",
+      "approved": true,
+      "final_title": "AI产品的未来：从工具到伙伴",
+      "title_candidates": [
+        "AI产品的未来：从工具到伙伴",
+        "深度对话：AI产品的未来：从工具到伙伴",
+        "AI产品的未来：从工具到伙伴的真相",
+        "聊聊AI产品的未来：从工具到伙伴这件事",
+        "为什么AI产品的未来：从工具到伙伴很重要"
+      ],
+      "sensitive_word_actions": [],
+      "conflict_policy": "preserve",
+      "conflict_summary": [],
+      "checklist_result": [],
+      "notes": "第2次草稿",
+      "custom_user_edits_acknowledged": false,
+      "created_at": "2026-06-22T03:46:57.407957"
+    },
+    {
+      "id": "91a036ca-c38f-48e3-b622-782e3c80e846",
+      "episode_number": "001",
+      "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
+      "reviewer": "草稿员",
+      "approved": true,
+      "final_title": "AI产品的未来：从工具到伙伴",
+      "title_candidates": [
+        "AI产品的未来：从工具到伙伴",
+        "深度对话：AI产品的未来：从工具到伙伴",
+        "AI产品的未来：从工具到伙伴的真相",
+        "聊聊AI产品的未来：从工具到伙伴这件事",
+        "为什么AI产品的未来：从工具到伙伴很重要"
+      ],
+      "sensitive_word_actions": [],
+      "conflict_policy": "preserve",
+      "conflict_summary": [],
+      "checklist_result": [],
+      "notes": "第3次草稿",
+      "custom_user_edits_acknowledged": false,
+      "created_at": "2026-06-22T03:46:57.432465"
+    },
+    {
+      "id": "1e597605-9ba2-48b7-8682-49e95b98ecf1",
+      "episode_number": "001",
+      "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
+      "reviewer": "审核人-A",
+      "approved": false,
+      "final_title": "AI产品的未来：从工具到伙伴",
+      "title_candidates": [
+        "AI产品的未来：从工具到伙伴",
+        "深度对话：AI产品的未来：从工具到伙伴",
+        "AI产品的未来：从工具到伙伴的真相",
+        "聊聊AI产品的未来：从工具到伙伴这件事",
+        "为什么AI产品的未来：从工具到伙伴很重要"
+      ],
+      "sensitive_word_actions": [],
+      "conflict_policy": "preserve",
+      "conflict_summary": [],
+      "checklist_result": [],
+      "notes": "请确认标题",
+      "custom_user_edits_acknowledged": false,
+      "created_at": "2026-06-22T03:46:57.463214"
+    },
+    {
+      "id": "022ecdc5-82f0-4724-9ae9-6c2582d267a9",
+      "episode_number": "001",
+      "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
+      "reviewer": "主编-B",
+      "approved": true,
+      "final_title": "AI产品的未来：从工具到伙伴",
+      "title_candidates": [
+        "AI产品的未来：从工具到伙伴",
+        "深度对话：AI产品的未来：从工具到伙伴",
+        "AI产品的未来：从工具到伙伴的真相",
+        "聊聊AI产品的未来：从工具到伙伴这件事",
+        "为什么AI产品的未来：从工具到伙伴很重要"
+      ],
+      "sensitive_word_actions": [],
+      "conflict_policy": "preserve",
+      "conflict_summary": [],
+      "checklist_result": [],
+      "notes": "标题OK，敏感词都保留原文",
+      "custom_user_edits_acknowledged": false,
+      "created_at": "2026-06-22T03:46:57.502026"
+    },
+    {
+      "id": "47e6ef9b-cc61-4b1b-9925-38f459d94408",
+      "episode_number": "001",
+      "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
+      "reviewer": "主编-B",
+      "approved": true,
+      "final_title": "AI产品的未来：从工具到伙伴",
+      "title_candidates": [
+        "AI产品的未来：从工具到伙伴",
+        "深度对话：AI产品的未来：从工具到伙伴",
+        "AI产品的未来：从工具到伙伴的真相",
+        "聊聊AI产品的未来：从工具到伙伴这件事",
+        "为什么AI产品的未来：从工具到伙伴很重要"
+      ],
+      "sensitive_word_actions": [],
+      "conflict_policy": "preserve",
+      "conflict_summary": [
+        {
+          "filename": "001_shownotes.md",
+          "filepath": "D:\\TraeProjects\\1404\\output\\001\\001_shownotes.md",
+          "action": "preserved",
+          "reason": "检测到用户手改，已保留原文件"
+        }
+      ],
+      "checklist_result": [],
+      "notes": "",
+      "custom_user_edits_acknowledged": true,
+      "created_at": "2026-06-22T03:46:58.555009"
+    },
+    {
+      "id": "6db420a5-1b4a-4a28-852d-7c58931b4c8c",
+      "episode_number": "001",
+      "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
+      "reviewer": "主编-B",
+      "approved": true,
+      "final_title": "AI产品的未来：从工具到伙伴",
+      "title_candidates": [
+        "AI产品的未来：从工具到伙伴",
+        "深度对话：AI产品的未来：从工具到伙伴",
+        "AI产品的未来：从工具到伙伴的真相",
+        "聊聊AI产品的未来：从工具到伙伴这件事",
+        "为什么AI产品的未来：从工具到伙伴很重要"
+      ],
+      "sensitive_word_actions": [],
+      "conflict_policy": "preserve",
+      "conflict_summary": [
+        {
+          "filename": "001_shownotes.md",
+          "filepath": "D:\\TraeProjects\\1404\\output\\001\\001_shownotes.md",
+          "action": "preserved",
+          "reason": "检测到用户手改，已保留原文件"
+        }
+      ],
+      "checklist_result": [],
+      "notes": "",
+      "custom_user_edits_acknowledged": true,
+      "created_at": "2026-06-22T03:46:58.565264"
+    },
+    {
+      "id": "6cac7643-7f05-4c2c-8ba0-d825d724627b",
+      "episode_number": "001",
+      "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
+      "reviewer": "主编-B",
+      "approved": true,
+      "final_title": "AI产品的未来：从工具到伙伴",
+      "title_candidates": [
+        "AI产品的未来：从工具到伙伴",
+        "深度对话：AI产品的未来：从工具到伙伴",
+        "AI产品的未来：从工具到伙伴的真相",
+        "聊聊AI产品的未来：从工具到伙伴这件事",
+        "为什么AI产品的未来：从工具到伙伴很重要"
+      ],
+      "sensitive_word_actions": [],
+      "conflict_policy": "overwrite",
+      "conflict_summary": [
+        {
+          "filename": "001_shownotes.md",
+          "filepath": "D:\\TraeProjects\\1404\\output\\001\\001_shownotes.md",
+          "action": "overwritten",
+          "reason": "检测到用户手改，但按策略已覆盖"
+        }
+      ],
+      "checklist_result": [],
+      "notes": "",
+      "custom_user_edits_acknowledged": true,
+      "created_at": "2026-06-22T03:46:58.591974"
+    },
+    {
+      "id": "7a975111-c6a6-438f-bfa2-f9ab9bc5a451",
+      "episode_number": "001",
+      "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
+      "reviewer": "主编-B",
+      "approved": true,
+      "final_title": "AI产品的未来：从工具到伙伴",
+      "title_candidates": [
+        "AI产品的未来：从工具到伙伴",
+        "深度对话：AI产品的未来：从工具到伙伴",
+        "AI产品的未来：从工具到伙伴的真相",
+        "聊聊AI产品的未来：从工具到伙伴这件事",
+        "为什么AI产品的未来：从工具到伙伴很重要"
+      ],
+      "sensitive_word_actions": [],
+      "conflict_policy": "preserve",
+      "conflict_summary": [],
+      "checklist_result": [],
+      "notes": "",
+      "custom_user_edits_acknowledged": true,
+      "created_at": "2026-06-22T03:46:58.606657"
+    }
+  ]
+}

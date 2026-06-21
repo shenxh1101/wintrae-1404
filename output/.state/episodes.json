@@ -1,29 +1,29 @@
 {
   "version": 1,
-  "saved_at": "2026-06-22T02:53:30.012253",
+  "saved_at": "2026-06-22T03:47:00.639747",
   "episodes": {
     "001": {
       "episode_number": "001",
       "directory": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来",
-      "status": "ready",
-      "created_at": "2026-06-22T02:51:54.500183",
-      "updated_at": "2026-06-22T02:53:30.012253",
-      "last_processed_at": "2026-06-22T02:52:49.294746",
-      "last_released_at": null,
+      "status": "released",
+      "created_at": "2026-06-22T03:46:57.340861",
+      "updated_at": "2026-06-22T03:46:58.606657",
+      "last_processed_at": "2026-06-22T03:46:58.606657",
+      "last_released_at": "2026-06-22T03:46:58.606657",
       "last_archived_at": null,
       "missing_files": [],
       "naming_issues": [],
       "sensitive_words_found": [],
-      "audio_duration_seconds": 0.0,
-      "audio_format": "",
+      "audio_duration_seconds": 10.0,
+      "audio_format": "wav",
       "cover_width": 1400,
       "cover_height": 1400,
       "cover_format": "JPEG",
       "files": {
-        "audio": "input\\001_AI产品的未来\\001_AI产品的未来.mp3",
-        "cover": "input\\001_AI产品的未来\\001_cover.jpg",
-        "guest": "input\\001_AI产品的未来\\001_嘉宾资料.md",
-        "summary": "input\\001_AI产品的未来\\001_节目摘要.md"
+        "audio": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_AI产品的未来.wav",
+        "cover": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_cover.jpg",
+        "guest": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_嘉宾资料.md",
+        "summary": "D:\\TraeProjects\\1404\\input\\001_AI产品的未来\\001_节目摘要.md"
       },
       "title": "AI产品的未来：从工具到伙伴",
       "title_candidates": [
@@ -35,15 +35,33 @@
       ],
       "output_dir": "D:\\TraeProjects\\1404\\output\\001",
       "archive_dir": "D:\\TraeProjects\\1404\\archive\\001",
-      "generated_files": [],
-      "file_hashes": {},
+      "generated_files": [
+        "D:\\TraeProjects\\1404\\output\\001\\001_shownotes.md",
+        "D:\\TraeProjects\\1404\\output\\001\\001_嘉宾介绍.md",
+        "D:\\TraeProjects\\1404\\output\\001\\001_weibo.txt",
+        "D:\\TraeProjects\\1404\\output\\001\\001_xiaohongshu.txt",
+        "D:\\TraeProjects\\1404\\output\\001\\001_wechat.txt",
+        "D:\\TraeProjects\\1404\\output\\001\\001_twitter.txt",
+        "D:\\TraeProjects\\1404\\output\\001\\001_待办清单.md",
+        "D:\\TraeProjects\\1404\\output\\001\\001_发布清单.md"
+      ],
+      "file_hashes": {
+        "001_shownotes.md": "0fbb860507bfe6336438376332ecc0e7",
+        "001_嘉宾介绍.md": "a6ee1140fbbc66ea99f22f71acf57825",
+        "001_weibo.txt": "066ec309a8a6f47e30b7432327769398",
+        "001_xiaohongshu.txt": "6b074bd356f9f00e700ea91f784b8715",
+        "001_wechat.txt": "632b3743564b3d717f6a2a95bf845c81",
+        "001_twitter.txt": "b5cd571f63671b80ee15f40574bd4005",
+        "001_待办清单.md": "011197ee65b3ecf1b9b597e695e4e110",
+        "001_发布清单.md": "0f8c1866d7e923f93e066090448d404a"
+      },
       "user_edited_files": [],
       "warnings": [],
       "errors": [],
       "checklist": [
         [
           "音频文件已校验",
-          false
+          true
         ],
         [
           "封面图符合规范",
@@ -75,11 +93,21 @@
         ]
       ],
       "is_valid": true,
-      "is_released": false,
+      "is_released": true,
+      "is_draft": false,
+      "is_pending_review": false,
       "is_archived": false,
-      "custom_user_edits": false,
+      "custom_user_edits": true,
       "release_notes": "",
-      "metadata": {}
+      "reviewer": "主编-B",
+      "last_reviewed_at": "2026-06-22T03:46:58.606657",
+      "last_scanned_at": "2026-06-22T03:47:00.638746",
+      "metadata": {
+        "last_release_mode": "release",
+        "is_draft": true,
+        "last_review_notes": "标题OK，敏感词都保留原文",
+        "input_dir_mtime": "2026-06-22T03:28:27.997435"
+      }
     }
   }
 }

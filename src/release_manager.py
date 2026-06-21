@@ -43,6 +43,10 @@ class ReleasePackage:
     generated_files: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     conflicts: List[Dict] = field(default_factory=list)
+    files_overwritten: List[str] = field(default_factory=list)
+    files_preserved: List[str] = field(default_factory=list)
+    is_draft: bool = False
+    release_mode: str = "release"
     is_ready: bool = False
 
     def to_dict(self) -> dict:
@@ -57,6 +61,10 @@ class ReleasePackage:
             "generated_files": self.generated_files,
             "warnings": list(self.warnings) if isinstance(self.warnings, list) else [],
             "conflicts": list(self.conflicts) if isinstance(self.conflicts, list) else [],
+            "files_overwritten": list(self.files_overwritten) if isinstance(self.files_overwritten, list) else [],
+            "files_preserved": list(self.files_preserved) if isinstance(self.files_preserved, list) else [],
+            "is_draft": bool(self.is_draft),
+            "release_mode": str(self.release_mode) if self.release_mode else "release",
             "is_ready": self.is_ready,
         }
 
@@ -384,10 +392,24 @@ class ReleaseManager:
                 package.warnings = []
             if not isinstance(package.conflicts, list):
                 package.conflicts = []
+            if not isinstance(package.files_overwritten, list):
+                package.files_overwritten = []
+            if not isinstance(package.files_preserved, list):
+                package.files_preserved = []
+            if not isinstance(package.generated_files, list):
+                package.generated_files = []
+            # 每次新的生成重新记录冲突与写入情况，避免跨次累加
+            package.conflicts = []
+            package.files_overwritten = []
+            package.files_preserved = []
+            package.generated_files = []
         except Exception:
             try:
                 package.warnings = []
                 package.conflicts = []
+                package.files_overwritten = []
+                package.files_preserved = []
+                package.generated_files = []
             except Exception:
                 pass
 
@@ -441,6 +463,8 @@ class ReleaseManager:
                                     "action": "preserved", "reason": "检测到用户手改，已保留原文件",
                                 })
                                 package.warnings.append(f"{bn}: 检测到用户手改，已保留原文件不覆盖")
+                                if filepath not in package.files_preserved:
+                                    package.files_preserved.append(filepath)
                             except Exception:
                                 pass
                             return True
@@ -465,6 +489,8 @@ class ReleaseManager:
                                     package.warnings.append(f"{bn}: 检测到用户手改，已另存旧版本为 {os.path.basename(backup)}")
                                     if backup not in package.generated_files:
                                         package.generated_files.append(backup)
+                                    if filepath not in package.files_overwritten:
+                                        package.files_overwritten.append(filepath)
                                 except Exception:
                                     pass
                             except Exception:
@@ -476,6 +502,8 @@ class ReleaseManager:
                                     "action": "overwritten",
                                     "reason": "检测到用户手改，但按策略已覆盖",
                                 })
+                                if filepath not in package.files_overwritten:
+                                    package.files_overwritten.append(filepath)
                             except Exception:
                                 pass
                     except Exception:
@@ -484,6 +512,8 @@ class ReleaseManager:
                     f.write(safe_content)
                 if written_path not in package.generated_files:
                     package.generated_files.append(written_path)
+                if not is_conflict and written_path not in package.files_overwritten:
+                    package.files_overwritten.append(written_path)
                 return True
             except (OSError, IOError, PermissionError, UnicodeEncodeError):
                 return False

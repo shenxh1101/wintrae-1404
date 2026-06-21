@@ -620,7 +620,8 @@ class PodcastToolCLI:
 
         return result
 
-    def interactive_release(self, result: EpisodeProcessResult, conflict_policy: str = "preserve"):
+    def interactive_release(self, result: EpisodeProcessResult, conflict_policy: str = "preserve",
+                            release_mode: str = "release", reviewer: str = "", review_notes: str = ""):
         try:
             if result is None or result.release_package is None:
                 print(" 没有可发布的内容")
@@ -634,13 +635,22 @@ class PodcastToolCLI:
 
         if conflict_policy not in ("preserve", "overwrite", "keep_both"):
             conflict_policy = "preserve"
+        mode = str(release_mode or "release").lower()
+        if mode not in ("draft", "pending_review", "release"):
+            mode = "release"
 
         try:
             print("\n" + "=" * 60)
-            print("  确认发布")
+            if mode == "draft":
+                print("  生成草稿版发布包")
+            elif mode == "pending_review":
+                print("  送待复核发布包")
+            else:
+                print("  确认正式发布")
             print("=" * 60)
             policy_label = {"preserve": "保留用户手改（不覆盖）", "overwrite": "强制覆盖", "keep_both": "新旧版本都保留"}.get(conflict_policy, conflict_policy)
             print(f"  冲突处理策略: {policy_label}")
+            print(f"  生成模式: { {'draft': '草稿版（不计入已发布）', 'pending_review': '待复核版', 'release': '正式发布版'}.get(mode, mode) }")
         except Exception:
             pass
 
@@ -678,13 +688,28 @@ class PodcastToolCLI:
         except Exception:
             pass
 
-        choice = safe_input("\n  确认执行重命名和生成发布文件？(y/N): ").strip().lower()
+        need_reviewer = mode == "release"
+        if not reviewer and need_reviewer:
+            try:
+                print("\n  正式发布需留复核人，便于团队追溯。")
+                reviewer = safe_input("  请输入复核人姓名 (可留空但不建议): ").strip()
+            except Exception:
+                reviewer = ""
+        if not review_notes and (mode == "release" or mode == "pending_review"):
+            try:
+                v = safe_input("\n  复核备注（可留空）: ").strip()
+                if v:
+                    review_notes = v
+            except Exception:
+                pass
+
+        choice = safe_input("\n  确认执行？(y/N): ").strip().lower()
         if choice != "y":
             print("  已取消")
             return
 
         try:
-            print("\n   正在生成发布包...")
+            print(f"\n   正在生成{'草稿' if mode == 'draft' else ('待复核包' if mode == 'pending_review' else '正式发布包')}...")
         except Exception:
             pass
 
@@ -706,7 +731,8 @@ class PodcastToolCLI:
                 use_title = None
 
             pkg, errors = self.processor.confirm_and_release(
-                result, title=use_title, conflict_policy=conflict_policy
+                result, title=use_title, conflict_policy=conflict_policy,
+                release_mode=mode, reviewer=reviewer, review_notes=review_notes,
             )
 
             if isinstance(errors, list) and errors:
@@ -907,6 +933,10 @@ class PodcastToolCLI:
             print(" 11. 导出看板为 CSV")
             print(" 12. 导出看板为 Markdown")
             print(" 13. 设置文案冲突处理策略（当前: " + str(getattr(self, "_conflict_policy", "preserve")) + "）")
+            print(" 14. 生成草稿版发布包（不计入已发布）")
+            print(" 15. 生成待复核版发布包（等待确认后正式发布）")
+            print(" 16. 查看某期的复核历史记录")
+            print(" 17. 期数看板（仅草稿 / 待复核）")
             print("  0. 退出")
             print()
         except Exception:
@@ -1089,6 +1119,17 @@ class PodcastToolCLI:
             choices=["preserve", "overwrite", "keep_both"],
             help="检测到用户手改文案时的处理策略: preserve=保留(默认) / overwrite=覆盖 / keep_both=另存新版本",
         )
+        parser.add_argument(
+            "--release-mode",
+            dest="release_mode",
+            default="release",
+            choices=["draft", "pending_review", "release"],
+            help="生成发布包的模式: draft=草稿版(不重命名，不算已发布，可反复生成) / pending_review=待复核版 / release=正式发布版(默认，需先通过复核)",
+        )
+        parser.add_argument("--reviewer", dest="reviewer", default="", help="复核人名称（用于生成可追溯复核记录）")
+        parser.add_argument("--review-notes", dest="review_notes", default="", help="复核备注")
+        parser.add_argument("--review-records", dest="review_records", nargs="?", const="", default=None,
+                            help="查看某期的复核记录（可选期号，留空查全部）")
         parser.add_argument("--config", "-c", help="配置文件路径")
 
         try:
@@ -1164,6 +1205,32 @@ class PodcastToolCLI:
             pass
 
         try:
+            if args.review_records is not None:
+                try:
+                    ep = ""
+                    if args.review_records and isinstance(args.review_records, str):
+                        ep = str(args.review_records)
+                    try:
+                        print(self.processor.render_review_records(episode_number=ep))
+                    except Exception:
+                        try:
+                            from src.state_manager import StateManager
+                            sm = StateManager(self.config)
+                            try:
+                                recs = sm.get_review_records(episode_number=ep)
+                                for r in recs:
+                                    print(f" - [{r.created_at}] {r.reviewer} -> {r.final_title[:40]} ({'通过' if r.approved else '待确认'})")
+                            except Exception:
+                                print(" 暂无复核记录")
+                        except Exception:
+                            print(" 无法读取复核记录")
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
+
+        try:
             if args.directory:
                 result = self.process_directory(args.directory)
                 try:
@@ -1171,7 +1238,11 @@ class PodcastToolCLI:
                         cp = getattr(args, "conflict_policy", "preserve")
                         if cp not in ("preserve", "overwrite", "keep_both"):
                             cp = "preserve"
-                        self.interactive_release(result, conflict_policy=cp)
+                        mode = getattr(args, "release_mode", "release")
+                        reviewer = getattr(args, "reviewer", "") or ""
+                        review_notes = getattr(args, "review_notes", "") or ""
+                        self.interactive_release(result, conflict_policy=cp,
+                                                 release_mode=mode, reviewer=reviewer, review_notes=review_notes)
                 except Exception:
                     pass
                 return
@@ -1317,7 +1388,7 @@ class PodcastToolCLI:
                         out = safe_input("  请输入 CSV 导出路径 (留空则 output/episodes.csv): ").strip()
                         if not out:
                             out = os.path.join(str(getattr(self.config, "output_dir", "./output") or "./output"), "episodes.csv")
-                        flt = safe_input("  筛选条件 (all/ready/pending/issues/released/not_released/archived/error，回车=all): ").strip() or FILTER_ALL
+                        flt = safe_input("  筛选条件 (all/ready/pending/issues/released/not_released/archived/error/draft/pending_review，回车=all): ").strip() or FILTER_ALL
                         if flt not in VALID_FILTERS:
                             flt = FILTER_ALL
                         self.show_dashboard(flt, export_csv_path=out)
@@ -1332,7 +1403,7 @@ class PodcastToolCLI:
                         out = safe_input("  请输入 Markdown 导出路径 (留空则 output/episodes.md): ").strip()
                         if not out:
                             out = os.path.join(str(getattr(self.config, "output_dir", "./output") or "./output"), "episodes.md")
-                        flt = safe_input("  筛选条件 (all/ready/pending/issues/released/not_released/archived/error，回车=all): ").strip() or FILTER_ALL
+                        flt = safe_input("  筛选条件 (all/ready/pending/issues/released/not_released/archived/error/draft/pending_review，回车=all): ").strip() or FILTER_ALL
                         if flt not in VALID_FILTERS:
                             flt = FILTER_ALL
                         self.show_dashboard(flt, export_md_path=out)
@@ -1359,6 +1430,96 @@ class PodcastToolCLI:
                             print(f"   设置失败: {e}")
                         except Exception:
                             pass
+
+                elif choice == "14":
+                    try:
+                        if self.current_result is not None:
+                            reviewer = safe_input("  请输入复核人 (可留空): ").strip()
+                            notes = safe_input("  请输入备注 (可留空): ").strip()
+                            self.interactive_release(
+                                self.current_result, conflict_policy=self._conflict_policy,
+                                release_mode="draft", reviewer=reviewer, review_notes=notes,
+                            )
+                        else:
+                            d = safe_input("  请输入要生成草稿的目录: ").strip()
+                            if d and os.path.isdir(d):
+                                result = self.process_directory(d)
+                                if result is not None and getattr(result, "is_valid", False):
+                                    self.current_result = result
+                                    reviewer = safe_input("  请输入复核人 (可留空): ").strip()
+                                    notes = safe_input("  请输入备注 (可留空): ").strip()
+                                    self.interactive_release(
+                                        result, conflict_policy=self._conflict_policy,
+                                        release_mode="draft", reviewer=reviewer, review_notes=notes,
+                                    )
+                                else:
+                                    print("   内容未通过校验")
+                            else:
+                                print("   目录无效")
+                    except Exception as e:
+                        try:
+                            print(f"   草稿生成失败: {e}")
+                        except Exception:
+                            pass
+
+                elif choice == "15":
+                    try:
+                        def _do_pending(ep_result, default_reviewer=""):
+                            reviewer = default_reviewer
+                            if not reviewer:
+                                reviewer = safe_input("  请输入复核人 (必填，团队追溯用): ").strip()
+                            notes = safe_input("  请输入备注 (可留空): ").strip()
+                            self.interactive_release(
+                                ep_result, conflict_policy=self._conflict_policy,
+                                release_mode="pending_review", reviewer=reviewer, review_notes=notes,
+                            )
+                        if self.current_result is not None:
+                            _do_pending(self.current_result)
+                        else:
+                            d = safe_input("  请输入要送复核的目录: ").strip()
+                            if d and os.path.isdir(d):
+                                result = self.process_directory(d)
+                                if result is not None and getattr(result, "is_valid", False):
+                                    self.current_result = result
+                                    _do_pending(result)
+                                else:
+                                    print("   内容未通过校验")
+                            else:
+                                print("   目录无效")
+                    except Exception as e:
+                        try:
+                            print(f"   待复核生成失败: {e}")
+                        except Exception:
+                            pass
+
+                elif choice == "16":
+                    try:
+                        ep = safe_input("  请输入期号 (留空则显示最近 10 条复核记录): ").strip()
+                        try:
+                            if self.processor is not None:
+                                print(self.processor.render_review_records(episode_number=str(ep), limit=20))
+                            elif self.state_manager is not None:
+                                recs = self.state_manager.get_review_records(episode_number=str(ep), limit=20)
+                                if not recs:
+                                    print("   (暂无复核记录)")
+                                else:
+                                    for r in recs:
+                                        print(f" - [{r.created_at}] {r.reviewer or '(匿名)'} -> {r.final_title[:40]} ({'通过' if r.approved else '待确认'})")
+                            else:
+                                print("   状态管理器未初始化")
+                        except Exception as e:
+                            try:
+                                print(f"   复核记录读取失败: {e}")
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        try:
+                            print(f"   复核记录查看失败: {e}")
+                        except Exception:
+                            pass
+
+                elif choice == "17":
+                    self.show_dashboard("pending_review")
 
                 else:
                     try:

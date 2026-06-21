@@ -294,6 +294,9 @@ class EpisodeProcessor:
     def confirm_and_release(
         self, result: EpisodeProcessResult, title: Optional[str] = None,
         conflict_policy: str = "preserve",
+        release_mode: str = "release",
+        reviewer: str = "",
+        review_notes: str = "",
     ) -> Tuple[Optional[ReleasePackage], list]:
         errors: list = []
 
@@ -310,6 +313,31 @@ class EpisodeProcessor:
                 errors.append("发布管理器未初始化")
                 return result.release_package, errors
 
+            try:
+                mode = str(release_mode or "release").lower()
+                if mode not in ("draft", "pending_review", "release"):
+                    mode = "release"
+                result.release_package.release_mode = mode
+                result.release_package.is_draft = (mode == "draft")
+                if mode == "draft":
+                    try:
+                        result.release_package.checklist = []
+                        try:
+                            from .release_manager import RenamePlan
+                            for rp in result.release_package.rename_plans:
+                                try:
+                                    if isinstance(rp, RenamePlan):
+                                        rp.executed = False
+                                        rp.success = False
+                                except Exception:
+                                    continue
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
             if title and isinstance(title, str) and title.strip():
                 try:
                     result.release_package.title = title
@@ -321,7 +349,14 @@ class EpisodeProcessor:
                     pass
 
             try:
-                self.release_manager.execute_renames(result.release_package)
+                do_renames = True
+                try:
+                    if result.release_package.release_mode == "draft":
+                        do_renames = False
+                except Exception:
+                    pass
+                if do_renames:
+                    self.release_manager.execute_renames(result.release_package)
             except Exception as e:
                 errors.append(f"重命名执行失败: {e}")
 
@@ -349,8 +384,93 @@ class EpisodeProcessor:
                     ep = result.episode_number if result.episode_number and result.episode_number != "未知" else ""
                     directory = result.directory if result.directory else ""
                     if ep or directory:
+                        try:
+                            mode = str(getattr(result.release_package, "release_mode", "release") or "release")
+                        except Exception:
+                            mode = "release"
                         self.state_manager.update_from_process_result(ep, directory, result)
-                        self.state_manager.mark_released(ep, directory)
+                        if mode == "draft":
+                            self.state_manager.mark_draft(ep, directory)
+                        elif mode == "pending_review":
+                            self.state_manager.mark_pending_review(ep, directory)
+                        elif mode == "release":
+                            self.state_manager.mark_released(ep, directory)
+
+                        try:
+                            if reviewer and isinstance(reviewer, str) and reviewer.strip():
+                                try:
+                                    from .state_manager import ReviewRecord
+                                    title_candidates: list = []
+                                    sw_actions: list = []
+                                    conf_summary: list = []
+                                    clist: list = []
+                                    has_user_ack = False
+                                    try:
+                                        gc = getattr(result, "generated_content", None)
+                                        if gc is not None:
+                                            tc = getattr(gc, "title_candidates", None)
+                                            if isinstance(tc, list):
+                                                title_candidates = [str(x) for x in tc if isinstance(x, str)]
+                                    except Exception:
+                                        pass
+                                    try:
+                                        vr = getattr(result, "validation", None)
+                                        if vr is not None:
+                                            sw = getattr(vr, "sensitive_words_found", None)
+                                            if isinstance(sw, list):
+                                                for item in sw:
+                                                    try:
+                                                        if isinstance(item, (list, tuple)) and len(item) >= 3:
+                                                            sw_actions.append({
+                                                                "type": str(item[0]),
+                                                                "word": str(item[1]),
+                                                                "context": str(item[2])[:120],
+                                                                "action": "kept",
+                                                            })
+                                                    except Exception:
+                                                        continue
+                                    except Exception:
+                                        pass
+                                    try:
+                                        conflicts = getattr(result.release_package, "conflicts", None)
+                                        if isinstance(conflicts, list):
+                                            conf_summary = [dict(c) for c in conflicts if isinstance(c, dict)]
+                                    except Exception:
+                                        pass
+                                    try:
+                                        cl = getattr(result.release_package, "checklist", None)
+                                        if isinstance(cl, list):
+                                            clist = [list(x) if isinstance(x, (list, tuple)) else [] for x in cl]
+                                    except Exception:
+                                        pass
+                                    try:
+                                        has_user_ack = bool(self.state_manager.has_user_edited_files(ep, directory))
+                                    except Exception:
+                                        has_user_ack = False
+                                    final_title = str(getattr(result.release_package, "title", "") or "")
+                                    rec = ReviewRecord(
+                                        episode_number=str(ep),
+                                        directory=str(directory),
+                                        reviewer=str(reviewer),
+                                        approved=True,
+                                        final_title=final_title,
+                                        title_candidates=title_candidates,
+                                        sensitive_word_actions=sw_actions,
+                                        conflict_policy=str(conflict_policy),
+                                        conflict_summary=conf_summary,
+                                        checklist_result=clist,
+                                        notes=str(review_notes) if review_notes else "",
+                                        custom_user_edits_acknowledged=has_user_ack,
+                                    )
+                                    if mode == "release":
+                                        rec.approved = True
+                                    elif mode == "pending_review":
+                                        rec.approved = False
+                                    self.state_manager.add_review_record(rec)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
                         try:
                             self.state_manager.save()
                         except Exception:
@@ -570,3 +690,70 @@ class EpisodeProcessor:
             except Exception:
                 pass
             return None, f"预览失败: {e}\n", errors
+
+    def render_review_records(self, episode_number: str = "", directory: str = "",
+                              limit: int = 10) -> str:
+        lines: list = []
+        try:
+            if self.state_manager is None:
+                return "  状态管理器未初始化\n"
+            try:
+                from datetime import datetime
+                records = self.state_manager.get_review_records(
+                    episode_number=episode_number, directory=directory, limit=limit
+                )
+                lines.append("")
+                lines.append(" 复核记录")
+                lines.append("=" * 60)
+                if not records:
+                    lines.append("  (暂无记录)")
+                    lines.append("")
+                    return "\n".join(lines)
+                for idx, rec in enumerate(records, 1):
+                    try:
+                        lines.append(f" {idx}. ID: {str(rec.id)[:8]}...")
+                        lines.append(f"    复核时间: {str(rec.created_at)}")
+                        lines.append(f"    复核人: {str(rec.reviewer) if rec.reviewer else '(未填写)'}")
+                        lines.append(f"    结果: {'通过' if rec.approved else '待确认'}")
+                        if rec.final_title:
+                            lines.append(f"    最终标题: {str(rec.final_title)}")
+                        if rec.conflict_policy:
+                            lines.append(f"    冲突策略: {str(rec.conflict_policy)}")
+                        try:
+                            if isinstance(rec.sensitive_word_actions, list) and rec.sensitive_word_actions:
+                                lines.append(f"    敏感词处理 ({len(rec.sensitive_word_actions)} 处):")
+                                for sw in rec.sensitive_word_actions[:5]:
+                                    try:
+                                        lines.append(f"      - [{sw.get('type', '')}] '{sw.get('word', '')}': {str(sw.get('context', ''))[:60]}")
+                                    except Exception:
+                                        continue
+                        except Exception:
+                            pass
+                        try:
+                            if isinstance(rec.conflict_summary, list) and rec.conflict_summary:
+                                lines.append(f"    文案冲突 ({len(rec.conflict_summary)} 项):")
+                                for c in rec.conflict_summary[:5]:
+                                    try:
+                                        bn = str(c.get("filename", "?"))
+                                        act = str(c.get("action", "?"))
+                                        reason = str(c.get("reason", ""))
+                                        lines.append(f"      - {bn}: {act} {reason[:40]}")
+                                    except Exception:
+                                        continue
+                        except Exception:
+                            pass
+                        if rec.notes:
+                            lines.append(f"    备注: {str(rec.notes)}")
+                        if rec.custom_user_edits_acknowledged:
+                            lines.append(f"    已确认用户手改: 是")
+                        lines.append("")
+                    except Exception:
+                        continue
+                lines.append("=" * 60)
+                lines.append("")
+                return "\n".join(lines)
+            except Exception:
+                return "  复核记录渲染失败\n"
+        except Exception:
+            return "  复核记录渲染失败\n"
+        return "\n".join(lines)

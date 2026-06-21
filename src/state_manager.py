@@ -15,6 +15,8 @@ from .utils import ensure_directory, sanitize_filename
 EPISODE_STATUS_PENDING = "pending"
 EPISODE_STATUS_READY = "ready"
 EPISODE_STATUS_PROCESSING = "processing"
+EPISODE_STATUS_DRAFT = "draft"
+EPISODE_STATUS_PENDING_REVIEW = "pending_review"
 EPISODE_STATUS_RELEASED = "released"
 EPISODE_STATUS_ARCHIVED = "archived"
 EPISODE_STATUS_ERROR = "error"
@@ -86,10 +88,15 @@ class EpisodeState:
 
         self.is_valid: bool = False
         self.is_released: bool = False
+        self.is_draft: bool = False
+        self.is_pending_review: bool = False
         self.is_archived: bool = False
 
         self.custom_user_edits: bool = False
         self.release_notes: str = ""
+        self.reviewer: str = ""
+        self.last_reviewed_at: Optional[str] = None
+        self.last_scanned_at: Optional[str] = None
         self.metadata: Dict[str, Any] = {}
 
     def touch(self):
@@ -211,10 +218,14 @@ class EpisodeState:
 
                 "is_valid": bool(self.is_valid),
                 "is_released": bool(self.is_released),
+                "is_draft": bool(self.is_draft),
+                "is_pending_review": bool(self.is_pending_review),
                 "is_archived": bool(self.is_archived),
-
                 "custom_user_edits": bool(self.custom_user_edits),
                 "release_notes": str(self.release_notes) if self.release_notes else "",
+                "reviewer": str(self.reviewer) if self.reviewer else "",
+                "last_reviewed_at": self.last_reviewed_at if isinstance(self.last_reviewed_at, str) else None,
+                "last_scanned_at": self.last_scanned_at if isinstance(self.last_scanned_at, str) else None,
                 "metadata": dict(self.metadata) if isinstance(self.metadata, dict) else {},
             }
         except Exception:
@@ -340,9 +351,16 @@ class EpisodeState:
             try:
                 state.is_valid = bool(data.get("is_valid", False))
                 state.is_released = bool(data.get("is_released", False))
+                state.is_draft = bool(data.get("is_draft", False))
+                state.is_pending_review = bool(data.get("is_pending_review", False))
                 state.is_archived = bool(data.get("is_archived", False))
                 state.custom_user_edits = bool(data.get("custom_user_edits", False))
                 state.release_notes = str(data.get("release_notes", ""))
+                state.reviewer = str(data.get("reviewer", ""))
+                lr = data.get("last_reviewed_at", None)
+                state.last_reviewed_at = str(lr) if isinstance(lr, str) else None
+                ls = data.get("last_scanned_at", None)
+                state.last_scanned_at = str(ls) if isinstance(ls, str) else None
             except Exception:
                 pass
 
@@ -368,6 +386,145 @@ class EpisodeState:
             return fallback
 
 
+class ReviewRecord:
+    def __init__(
+        self,
+        episode_number: str,
+        directory: str = "",
+        reviewer: str = "",
+        approved: bool = True,
+        final_title: str = "",
+        title_candidates: Optional[List[str]] = None,
+        sensitive_word_actions: Optional[List[Dict]] = None,
+        conflict_policy: str = "preserve",
+        conflict_summary: Optional[List[Dict]] = None,
+        checklist_result: Optional[List[List]] = None,
+        notes: str = "",
+        custom_user_edits_acknowledged: bool = False,
+    ):
+        self.id: str = ""
+        self.episode_number: str = str(episode_number) if episode_number else "unknown"
+        self.directory: str = str(directory) if directory else ""
+        self.reviewer: str = str(reviewer) if reviewer else ""
+        self.approved: bool = bool(approved)
+        self.final_title: str = str(final_title) if final_title else ""
+        self.title_candidates: List[str] = list(title_candidates) if isinstance(title_candidates, list) else []
+        self.sensitive_word_actions: List[Dict] = list(sensitive_word_actions) if isinstance(sensitive_word_actions, list) else []
+        self.conflict_policy: str = str(conflict_policy) if conflict_policy else "preserve"
+        self.conflict_summary: List[Dict] = list(conflict_summary) if isinstance(conflict_summary, list) else []
+        self.checklist_result: List[List] = [list(x) for x in checklist_result] if isinstance(checklist_result, list) else []
+        self.notes: str = str(notes) if notes else ""
+        self.custom_user_edits_acknowledged: bool = bool(custom_user_edits_acknowledged)
+        self.created_at: str = datetime.now().isoformat()
+        if not self.id:
+            try:
+                import uuid
+                self.id = str(uuid.uuid4())
+            except Exception:
+                self.id = f"rev_{self.episode_number}_{int(datetime.now().timestamp())}"
+
+    def to_dict(self) -> dict:
+        try:
+            def _safe_item(x):
+                try:
+                    if isinstance(x, (list, tuple)) and len(x) >= 2:
+                        return [str(x[0]), bool(x[1])]
+                    if isinstance(x, list):
+                        return [str(v) for v in x]
+                except Exception:
+                    pass
+                return []
+            return {
+                "id": str(self.id),
+                "episode_number": str(self.episode_number),
+                "directory": str(self.directory),
+                "reviewer": str(self.reviewer),
+                "approved": bool(self.approved),
+                "final_title": str(self.final_title),
+                "title_candidates": [str(x) for x in self.title_candidates if x is not None] if isinstance(self.title_candidates, list) else [],
+                "sensitive_word_actions": list(self.sensitive_word_actions) if isinstance(self.sensitive_word_actions, list) else [],
+                "conflict_policy": str(self.conflict_policy),
+                "conflict_summary": list(self.conflict_summary) if isinstance(self.conflict_summary, list) else [],
+                "checklist_result": [_safe_item(x) for x in self.checklist_result] if isinstance(self.checklist_result, list) else [],
+                "notes": str(self.notes),
+                "custom_user_edits_acknowledged": bool(self.custom_user_edits_acknowledged),
+                "created_at": str(self.created_at),
+            }
+        except Exception:
+            return {"id": str(self.id), "episode_number": str(self.episode_number), "created_at": str(self.created_at)}
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "ReviewRecord":
+        try:
+            r = cls("")
+            try:
+                r.id = str(data.get("id", ""))
+            except Exception:
+                pass
+            try:
+                r.episode_number = str(data.get("episode_number", ""))
+            except Exception:
+                pass
+            try:
+                r.directory = str(data.get("directory", ""))
+            except Exception:
+                pass
+            try:
+                r.reviewer = str(data.get("reviewer", ""))
+            except Exception:
+                pass
+            try:
+                r.approved = bool(data.get("approved", True))
+            except Exception:
+                pass
+            try:
+                r.final_title = str(data.get("final_title", ""))
+            except Exception:
+                pass
+            try:
+                tc = data.get("title_candidates", [])
+                r.title_candidates = [str(x) for x in tc if isinstance(x, str)] if isinstance(tc, list) else []
+            except Exception:
+                r.title_candidates = []
+            try:
+                swa = data.get("sensitive_word_actions", [])
+                r.sensitive_word_actions = [dict(x) for x in swa if isinstance(x, dict)] if isinstance(swa, list) else []
+            except Exception:
+                r.sensitive_word_actions = []
+            try:
+                r.conflict_policy = str(data.get("conflict_policy", "preserve"))
+            except Exception:
+                pass
+            try:
+                cs = data.get("conflict_summary", [])
+                r.conflict_summary = [dict(x) for x in cs if isinstance(x, dict)] if isinstance(cs, list) else []
+            except Exception:
+                r.conflict_summary = []
+            try:
+                cl = data.get("checklist_result", [])
+                r.checklist_result = [list(x) for x in cl if isinstance(x, (list, tuple))] if isinstance(cl, list) else []
+            except Exception:
+                r.checklist_result = []
+            try:
+                r.notes = str(data.get("notes", ""))
+            except Exception:
+                pass
+            try:
+                r.custom_user_edits_acknowledged = bool(data.get("custom_user_edits_acknowledged", False))
+            except Exception:
+                pass
+            try:
+                ca = data.get("created_at", None)
+                if ca:
+                    r.created_at = str(ca)
+            except Exception:
+                pass
+            return r
+        except Exception:
+            fallback = cls("unknown")
+            return fallback
+
+
 class StateManager:
     def __init__(self, config: Config = None):
         try:
@@ -387,11 +544,14 @@ class StateManager:
 
         try:
             self.state_file = os.path.join(self.state_dir, "episodes.json")
+            self.review_file = os.path.join(self.state_dir, "review_records.json")
         except Exception:
             self.state_file = "episodes_state.json"
+            self.review_file = "review_records_state.json"
 
         self._lock = threading.RLock()
         self._episodes: Dict[str, EpisodeState] = {}
+        self._review_records: List[ReviewRecord] = []
         self._dirty = False
 
         try:
@@ -407,32 +567,53 @@ class StateManager:
     def _load(self):
         with self._lock:
             self._episodes = {}
+            self._review_records = []
             try:
                 if not os.path.exists(self.state_file):
+                    pass
+                else:
+                    with open(self.state_file, "r", encoding="utf-8") as f:
+                        raw = f.read()
+                    if raw and raw.strip():
+                        data = json.loads(raw)
+                        if isinstance(data, dict):
+                            eps_data = data.get("episodes", {})
+                            if isinstance(eps_data, dict):
+                                for key, ep_data in eps_data.items():
+                                    try:
+                                        if isinstance(ep_data, dict):
+                                            state = EpisodeState.from_dict(ep_data)
+                                            if isinstance(key, str) and key:
+                                                self._episodes[key] = state
+                                    except Exception:
+                                        continue
+            except (json.JSONDecodeError, OSError, IOError, PermissionError, UnicodeDecodeError):
+                self._episodes = {}
+
+            try:
+                if not os.path.exists(self.review_file):
                     return
-                with open(self.state_file, "r", encoding="utf-8") as f:
+                with open(self.review_file, "r", encoding="utf-8") as f:
                     raw = f.read()
                 if not raw or not raw.strip():
                     return
                 data = json.loads(raw)
-                if not isinstance(data, dict):
+                records = data.get("records", []) if isinstance(data, dict) else []
+                if not isinstance(records, list):
                     return
-                eps_data = data.get("episodes", {})
-                if not isinstance(eps_data, dict):
-                    return
-                for key, ep_data in eps_data.items():
+                for item in records:
                     try:
-                        if isinstance(ep_data, dict):
-                            state = EpisodeState.from_dict(ep_data)
-                            if isinstance(key, str) and key:
-                                self._episodes[key] = state
+                        if isinstance(item, dict):
+                            rec = ReviewRecord.from_dict(item)
+                            self._review_records.append(rec)
                     except Exception:
                         continue
             except (json.JSONDecodeError, OSError, IOError, PermissionError, UnicodeDecodeError):
-                self._episodes = {}
+                self._review_records = []
 
     def save(self) -> bool:
         with self._lock:
+            ok_eps = False
             try:
                 ensure_directory(self.state_dir)
                 data = {
@@ -449,15 +630,44 @@ class StateManager:
                     except Exception:
                         pass
                 os.replace(tmp_file, self.state_file)
-                self._dirty = False
-                return True
+                ok_eps = True
             except (OSError, IOError, PermissionError, TypeError, ValueError, UnicodeEncodeError):
                 try:
                     if os.path.exists(self.state_file + ".tmp"):
                         os.remove(self.state_file + ".tmp")
                 except Exception:
                     pass
-                return False
+                ok_eps = False
+
+            ok_rev = False
+            try:
+                ensure_directory(self.state_dir)
+                rev_data = {
+                    "version": 1,
+                    "saved_at": datetime.now().isoformat(),
+                    "records": [r.to_dict() for r in self._review_records],
+                }
+                tmp_rev = self.review_file + ".tmp"
+                with open(tmp_rev, "w", encoding="utf-8") as f:
+                    json.dump(rev_data, f, ensure_ascii=False, indent=2)
+                if os.path.exists(self.review_file):
+                    try:
+                        os.remove(self.review_file)
+                    except Exception:
+                        pass
+                os.replace(tmp_rev, self.review_file)
+                ok_rev = True
+            except (OSError, IOError, PermissionError, TypeError, ValueError, UnicodeEncodeError):
+                try:
+                    if os.path.exists(self.review_file + ".tmp"):
+                        os.remove(self.review_file + ".tmp")
+                except Exception:
+                    pass
+                ok_rev = False
+
+            if ok_eps or ok_rev:
+                self._dirty = False
+            return ok_eps and ok_rev
 
     def _get_key(self, episode_number: str, directory: str = "") -> str:
         try:
@@ -475,17 +685,26 @@ class StateManager:
 
     def get(self, episode_number: str, directory: str = "") -> Optional[EpisodeState]:
         with self._lock:
-            key = self._get_key(episode_number, directory)
-            if key in self._episodes:
-                return self._episodes[key]
+            try:
+                key = self._get_key(episode_number, directory)
+                if key in self._episodes:
+                    return self._episodes[key]
+            except Exception:
+                pass
             return None
 
     def get_or_create(self, episode_number: str, directory: str = "") -> EpisodeState:
         with self._lock:
-            key = self._get_key(episode_number, directory)
-            if key in self._episodes:
-                return self._episodes[key]
-            state = EpisodeState(episode_number, directory)
+            try:
+                key = self._get_key(episode_number, directory)
+                if key in self._episodes:
+                    return self._episodes[key]
+            except Exception:
+                key = "unknown"
+            try:
+                state = EpisodeState(episode_number, directory)
+            except Exception:
+                state = EpisodeState("unknown", "")
             self._episodes[key] = state
             self._dirty = True
             return state
@@ -646,12 +865,58 @@ class StateManager:
                     except Exception:
                         pass
                     try:
-                        for f in state.generated_files:
-                            try:
-                                if isinstance(f, str) and f:
-                                    state.record_generated_file_hash(f)
-                            except Exception:
-                                continue
+                        overwritten_list: list = []
+                        preserved_list: list = []
+                        try:
+                            rl = getattr(rp, "files_overwritten", None)
+                            if isinstance(rl, list):
+                                overwritten_list = [str(x) for x in rl if isinstance(x, str)]
+                            pl = getattr(rp, "files_preserved", None)
+                            if isinstance(pl, list):
+                                preserved_list = [str(x) for x in pl if isinstance(x, str)]
+                        except Exception:
+                            overwritten_list = []
+                            preserved_list = []
+
+                        try:
+                            if overwritten_list:
+                                for f in overwritten_list:
+                                    try:
+                                        state.record_generated_file_hash(f)
+                                    except Exception:
+                                        continue
+                                seen_overwritten = {os.path.basename(x) for x in overwritten_list if isinstance(x, str)}
+                                try:
+                                    new_ue = [f for f in state.user_edited_files if isinstance(f, str) and f not in seen_overwritten]
+                                    state.user_edited_files = new_ue
+                                except Exception:
+                                    pass
+                                if preserved_user_edited and not state.user_edited_files and seen_overwritten:
+                                    state.custom_user_edits = False
+                        except Exception:
+                            pass
+
+                        try:
+                            if preserved_list:
+                                for f in preserved_list:
+                                    try:
+                                        bn = os.path.basename(f)
+                                        if bn and isinstance(bn, str) and bn not in state.user_edited_files:
+                                            state.user_edited_files.append(bn)
+                                    except Exception:
+                                        continue
+                                state.custom_user_edits = True
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+
+                    try:
+                        rl_mode = getattr(rp, "release_mode", "release")
+                        if rl_mode and isinstance(rl_mode, str):
+                            state.metadata["last_release_mode"] = str(rl_mode)
+                        if getattr(rp, "is_draft", False):
+                            state.metadata["is_draft"] = True
                     except Exception:
                         pass
                     try:
@@ -670,9 +935,26 @@ class StateManager:
                         pass
                     try:
                         ready = getattr(rp, "is_ready", False)
-                        if ready:
-                            state.is_released = True
-                            state.last_released_at = datetime.now().isoformat()
+                        mode = str(getattr(rp, "release_mode", "release") or "release")
+                        is_draft_mode = bool(getattr(rp, "is_draft", False))
+                        try:
+                            if is_draft_mode or mode == "draft":
+                                state.is_draft = True
+                                state.is_pending_review = False
+                                state.is_released = False
+                            elif mode == "pending_review":
+                                state.is_draft = False
+                                state.is_pending_review = True
+                                state.is_released = False
+                            elif ready:
+                                state.is_draft = False
+                                state.is_pending_review = False
+                                state.is_released = True
+                                state.last_released_at = datetime.now().isoformat()
+                        except Exception:
+                            if ready:
+                                state.is_released = True
+                                state.last_released_at = datetime.now().isoformat()
                     except Exception:
                         pass
             except Exception:
@@ -696,6 +978,10 @@ class StateManager:
                     state.status = EPISODE_STATUS_ARCHIVED
                 elif state.is_released:
                     state.status = EPISODE_STATUS_RELEASED
+                elif state.is_pending_review:
+                    state.status = EPISODE_STATUS_PENDING_REVIEW
+                elif state.is_draft:
+                    state.status = EPISODE_STATUS_DRAFT
                 elif state.errors:
                     state.status = EPISODE_STATUS_ERROR
                 elif state.is_valid:
@@ -743,9 +1029,41 @@ class StateManager:
                 return None
             try:
                 state.is_released = True
+                state.is_draft = False
+                state.is_pending_review = False
                 state.last_released_at = datetime.now().isoformat()
                 if not state.is_archived:
                     state.status = EPISODE_STATUS_RELEASED
+                state.touch()
+                self._dirty = True
+            except Exception:
+                pass
+            return state
+
+    def mark_draft(self, episode_number: str, directory: str = "") -> Optional[EpisodeState]:
+        with self._lock:
+            state = self.get_or_create(episode_number, directory)
+            try:
+                state.is_draft = True
+                state.is_pending_review = False
+                state.is_released = False
+                if not state.is_archived:
+                    state.status = EPISODE_STATUS_DRAFT
+                state.touch()
+                self._dirty = True
+            except Exception:
+                pass
+            return state
+
+    def mark_pending_review(self, episode_number: str, directory: str = "") -> Optional[EpisodeState]:
+        with self._lock:
+            state = self.get_or_create(episode_number, directory)
+            try:
+                state.is_draft = False
+                state.is_pending_review = True
+                state.is_released = False
+                if not state.is_archived:
+                    state.status = EPISODE_STATUS_PENDING_REVIEW
                 state.touch()
                 self._dirty = True
             except Exception:
@@ -965,6 +1283,114 @@ class StateManager:
             return [str(c.get("filename", "")) for c in self.detect_conflicts(episode_number, directory) if c.get("is_user_edited")]
         except Exception:
             return []
+
+    def add_review_record(self, record: ReviewRecord) -> Optional[ReviewRecord]:
+        with self._lock:
+            try:
+                if record is None:
+                    return None
+                if not record.id:
+                    try:
+                        import uuid
+                        record.id = str(uuid.uuid4())
+                    except Exception:
+                        record.id = f"rev_{record.episode_number}_{int(datetime.now().timestamp())}"
+                self._review_records.append(record)
+                try:
+                    state = self.get(record.episode_number, record.directory)
+                    if state is not None:
+                        try:
+                            state.last_reviewed_at = str(record.created_at) if isinstance(record.created_at, str) else datetime.now().isoformat()
+                            if isinstance(record.reviewer, str) and record.reviewer:
+                                state.reviewer = str(record.reviewer)
+                            if record.approved and isinstance(record.final_title, str) and record.final_title:
+                                state.title = str(record.final_title)
+                            if isinstance(record.notes, str) and record.notes:
+                                try:
+                                    if not isinstance(state.metadata, dict):
+                                        state.metadata = {}
+                                    state.metadata["last_review_notes"] = str(record.notes)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                self._dirty = True
+                return record
+            except Exception:
+                return None
+
+    def get_review_records(self, episode_number: str = "", directory: str = "",
+                           reviewer: str = "", approved_only: bool = False,
+                           limit: Optional[int] = None) -> List[ReviewRecord]:
+        try:
+            with self._lock:
+                out: List[ReviewRecord] = []
+                for r in self._review_records:
+                    try:
+                        if episode_number and r.episode_number != str(episode_number):
+                            continue
+                        if reviewer and r.reviewer != str(reviewer):
+                            continue
+                        if approved_only and not r.approved:
+                            continue
+                        out.append(r)
+                    except Exception:
+                        continue
+                try:
+                    out.sort(key=lambda r: r.created_at, reverse=True)
+                except Exception:
+                    pass
+                try:
+                    if limit is not None and isinstance(limit, int) and limit > 0:
+                        out = out[:limit]
+                except Exception:
+                    pass
+                return out
+        except Exception:
+            return []
+
+    def get_latest_review(self, episode_number: str, directory: str = "") -> Optional[ReviewRecord]:
+        try:
+            recs = self.get_review_records(episode_number, directory, limit=1)
+            return recs[0] if recs else None
+        except Exception:
+            return None
+
+    def has_pending_review(self, episode_number: str, directory: str = "") -> bool:
+        try:
+            state = self.get(episode_number, directory)
+            if state is None:
+                return False
+            if state.is_pending_review:
+                return True
+            if state.is_draft:
+                return True
+            latest = self.get_latest_review(episode_number, directory)
+            if latest is None:
+                return state.is_draft
+            return not latest.approved
+        except Exception:
+            return False
+
+    def mark_scanned(self, episode_number: str, directory: str = "",
+                     source_dir_mtime: Optional[str] = None) -> Optional[EpisodeState]:
+        with self._lock:
+            state = self.get_or_create(episode_number, directory)
+            try:
+                state.last_scanned_at = datetime.now().isoformat()
+                if source_dir_mtime and isinstance(source_dir_mtime, str):
+                    try:
+                        if not isinstance(state.metadata, dict):
+                            state.metadata = {}
+                        state.metadata["input_dir_mtime"] = str(source_dir_mtime)
+                    except Exception:
+                        pass
+                self._dirty = True
+            except Exception:
+                pass
+            return state
 
     @property
     def dirty(self) -> bool:
